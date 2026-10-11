@@ -206,6 +206,12 @@ def _assign_categories(lines: list[Line], opex_group: Group | None, config: Conf
                 line.category = other
                 unmatched.append(line.label)
         order = [name for name, _ in rollups]
+        for name in order:
+            if not any(line.category == name for line in lines):
+                issues.append(Issue("empty_opex_category", WARNING,
+                                    f"Expense category '{name}' matches no operating-expense account, so it is reported "
+                                    "as 0 every month; check its 'match' patterns in the company config",
+                                    sheet=sheet, account=name))
         if unmatched:
             order.append(other)
             issues.append(Issue("uncategorised_opex", INFO,
