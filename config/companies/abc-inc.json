@@ -1,0 +1,29 @@
+{
+  "_comment": "ABC Inc. Only overrides of src/financial_analysis/config.py DEFAULTS live here. Classifications and categories are accounting judgments drafted by engineering and must be confirmed by the accounting team before client use. 'Federal & State Taxes' is deliberately left as an operating expense: the workbook does not say whether it is income tax or another tax.",
+  "company_name": "ABC Inc",
+  "currency": "USD",
+  "fiscal_year_start_month": 1,
+  "income_statement": {
+    "account_classes": {
+      "non_operating": ["Interest Expense", "Interest Income"],
+      "income_tax": ["Income Tax Benefit"],
+      "non_cash": ["Depreciation", "Stock-Based Compensation Expense"]
+    },
+    "expected_negative_accounts": ["Interest Income", "Income Tax Benefit"],
+    "opex_rollups": [
+      {"name": "Interest & income tax (non-operating)", "match": ["> Interest (Expense|Income)$", "> Income Tax Benefit$"]},
+      {"name": "Non-cash: depreciation & stock compensation", "match": ["> Depreciation$", "> Stock-Based Compensation Expense$"]},
+      {"name": "Sales & marketing payroll", "match": ["> S & M Payroll >", "> Sales (&|and) Marketing (- )?(Payroll|Workers Comp)"]},
+      {"name": "Product & development payroll", "match": ["> Development Payroll$", "> Product (- )?(Payroll|Workers Comp)"]},
+      {"name": "Operations payroll", "match": ["> Operating Payroll$", "> Operations (- )?(Payroll|Workers Comp)"]},
+      {"name": "Bonus, benefits & payroll fees", "match": ["> Bonus$", "> Health Insurance$", "> Workers Compensation Insurance$", "> Payroll Service Fee$", "> Severance$", "> Employee Training"]},
+      {"name": "Contractors", "match": ["Contractor$"]},
+      {"name": "Marketing & partnerships", "match": ["> Marketing >", "> Partnerships Commission$"]},
+      {"name": "Travel, meals & entertainment", "match": ["Travel", "Meals & Entertainment"]},
+      {"name": "Software, AI & telecom", "match": ["> Software & SaaS$", "> AI Token Cost$", "> Telephone & Internet$"]},
+      {"name": "Rent, office & insurance", "match": ["> Rent$", "> Office Expenses$", "> Postage", "> Printing", "> Insurance$"]},
+      {"name": "Professional fees", "match": ["> Accounting & Tax$", "> Advisory Services$", "> Consulting$", "> Legal Expenses$", "> Professional Fees$"]},
+      {"name": "Other G&A", "match": ["> Bad Debts$", "> Bank Service Charges$", "> Merchant fees$", "> General Expenses$", "> Contribution to Charities$", "> Federal & State Taxes$", "> Recruiting Expense$"]}
+    ]
+  }
+}
