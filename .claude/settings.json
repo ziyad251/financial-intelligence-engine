@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(~/.secrets/**)",
+      "Edit(~/.secrets/**)",
+      "Read(**/.env)",
+      "Read(**/*.env)"
+    ]
+  }
+}
