@@ -336,8 +336,12 @@ def load_workbook(path: str | Path, config: Config) -> LoadedWorkbook:
     if not path.is_file():
         raise AnalysisError(f"Workbook not found: {path}")
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    wb_f = openpyxl.load_workbook(path, data_only=False)
-    wb_v = openpyxl.load_workbook(path, data_only=True)
+    try:
+        wb_f = openpyxl.load_workbook(path, data_only=False)
+        wb_v = openpyxl.load_workbook(path, data_only=True)
+    except Exception as exc:  # corrupt, password-protected, .xls/.csv renamed, truncated download, ...
+        raise AnalysisError(f"Could not open workbook {path.name}: it is not a readable .xlsx/.xlsm file "
+                            f"({type(exc).__name__}: {exc}). Re-export it from Excel or the accounting system.") from exc
     names = wb_f.sheetnames
     issues: list[Issue] = []
 

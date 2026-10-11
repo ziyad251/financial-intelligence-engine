@@ -9,6 +9,7 @@ into owner-facing categories) belongs in that file, never in code.
 from __future__ import annotations
 
 import copy
+import difflib
 import json
 import re
 from pathlib import Path
@@ -71,6 +72,68 @@ def normalize_label(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("�", "-")).strip().casefold()
 
 
+class ConfigError(ValueError):
+    """A company config that cannot be used as written (unknown key, wrong type, bad regex)."""
+
+
+INTEGER_KEYS = {"fiscal_year_start_month": (1, 12), "thresholds.max_highlights": (1, None)}
+
+
+def _validate(override: dict[str, Any], defaults: dict[str, Any], where: str = "") -> None:
+    """Check an override against the shape of DEFAULTS, so a typo fails loudly instead of being ignored."""
+    for key, value in override.items():
+        path = f"{where}.{key}" if where else key
+        if key not in defaults:
+            close = difflib.get_close_matches(key, list(defaults), n=1)
+            hint = f" Did you mean '{close[0]}'?" if close else ""
+            raise ConfigError(f"unknown key '{path}'.{hint} Allowed here: {', '.join(sorted(defaults))}")
+        default = defaults[key]
+        if path == "income_statement.opex_rollups":
+            _validate_rollups(value, path)
+        elif isinstance(default, dict):
+            if not isinstance(value, dict):
+                raise ConfigError(f"'{path}' must be an object, got {value!r}")
+            _validate(value, default, path)
+        elif isinstance(default, list):
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                raise ConfigError(f"'{path}' must be a list of strings, got {value!r}")
+        elif isinstance(default, bool):
+            if not isinstance(value, bool):
+                raise ConfigError(f"'{path}' must be true or false, got {value!r}")
+        elif isinstance(default, (int, float)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+                raise ConfigError(f"'{path}' must be a non-negative number, got {value!r}")
+            if path in INTEGER_KEYS:
+                low, high = INTEGER_KEYS[path]
+                if not isinstance(value, int) or value < low or (high is not None and value > high):
+                    raise ConfigError(f"'{path}' must be a whole number from {low}"
+                                      f"{f' to {high}' if high else ' upwards'}, got {value!r}")
+        elif value is not None and not isinstance(value, str):
+            raise ConfigError(f"'{path}' must be a string, got {value!r}")
+
+
+def _validate_rollups(value: Any, path: str) -> None:
+    if not isinstance(value, list):
+        raise ConfigError(f"'{path}' must be a list of {{\"name\", \"match\"}} objects, got {value!r}")
+    for i, rollup in enumerate(value):
+        where = f"{path}[{i}]"
+        if not isinstance(rollup, dict):
+            raise ConfigError(f"'{where}' must be an object with 'name' and 'match', got {rollup!r}")
+        extra = set(rollup) - {"name", "match"}
+        if extra:
+            raise ConfigError(f"'{where}' has unknown key(s) {sorted(extra)}; only 'name' and 'match' are allowed")
+        name, patterns = rollup.get("name"), rollup.get("match")
+        if not isinstance(name, str) or not name.strip():
+            raise ConfigError(f"'{where}.name' must be a non-empty string, got {name!r}")
+        if not isinstance(patterns, list) or not patterns or not all(isinstance(p, str) for p in patterns):
+            raise ConfigError(f"'{where}.match' ('{name}') must be a non-empty list of regex strings, got {patterns!r}")
+        for pattern in patterns:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ConfigError(f"'{where}.match' ('{name}'): invalid regular expression {pattern!r}: {exc}") from exc
+
+
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     out = copy.deepcopy(base)
     for key, value in override.items():
@@ -96,8 +159,17 @@ class Config:
         if path is None:
             return cls(copy.deepcopy(DEFAULTS))
         with open(path, encoding="utf-8") as fh:
-            override = json.load(fh)
+            try:
+                override = json.load(fh)
+            except json.JSONDecodeError as exc:
+                raise ConfigError(f"Invalid company config {path}: not valid JSON ({exc})") from exc
+        if not isinstance(override, dict):
+            raise ConfigError(f"Invalid company config {path}: the top level must be a JSON object")
         override = {k: v for k, v in override.items() if not k.startswith("_")}  # allow "_comment" keys
+        try:
+            _validate(override, DEFAULTS)
+        except ConfigError as exc:
+            raise ConfigError(f"Invalid company config {path}: {exc}") from exc
         return cls(_deep_merge(DEFAULTS, override), source=str(path))
 
     def __getattr__(self, name: str) -> Any:
