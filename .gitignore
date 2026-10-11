@@ -44,9 +44,6 @@ desktop.ini
 # --- Analysis outputs (contain client financial figures) ---
 out/
 
-# --- Local skill-discovery links (created by scripts/link-skills.*; the source of truth is skills/) ---
-.claude/skills/monthly-trend-analysis
-
 # --- Supplied / client financial data and third-party documents (never committed) ---
 data/
 docs/*.pdf

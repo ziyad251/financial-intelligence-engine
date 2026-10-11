@@ -5,7 +5,7 @@ This is a build exercise for RE Financial Services: connect QuickBooks Online to
 | Part | Deliverable | Status |
 |---|---|---|
 | 1. QuickBooks ↔ Claude | Read-only MCP connection to a sandbox company | Working. [Integration README](integrations/quickbooks/README.md), [decision record](docs/integration-decision.md) |
-| 2. Trend-analysis skill | [`skills/monthly-trend-analysis`](skills/monthly-trend-analysis/SKILL.md) and its Python pipeline | Working on the supplied workbook; 62 unit and integration tests |
+| 2. Trend-analysis skill | [`.claude/skills/monthly-trend-analysis`](.claude/skills/monthly-trend-analysis/SKILL.md) and its Python pipeline | Working on the supplied workbook; 88 tests (78 run without the workbook, see Quick start) |
 | 3. Eval suite (5+ golden cases) | `evals/` | **Not started.** `evals/golden_cases/` and `evals/fixtures/` are empty |
 | 4. One-page architecture note | `docs/architecture.md` | **Not written** |
 
@@ -14,13 +14,11 @@ This is a build exercise for RE Financial Services: connect QuickBooks Online to
 ```
 .mcp.json                         QuickBooks MCP server config (no secrets)
 .claude/settings.json             Deny rules for credential files
-.claude/skills/                   Local links to skills/ for discovery (gitignored; see below)
+.claude/skills/monthly-trend-analysis/  The Claude Skill: SKILL.md, runner script, references
 config/companies/                 Per-company settings: account classes, expense categories
 data/                             Source workbook (read-only input; gitignored, so place it here locally)
 docs/                             Integration decision, security (assignment brief PDF kept locally, not committed)
 integrations/quickbooks/          QuickBooks setup, OAuth, tokens, troubleshooting
-scripts/link-skills.{ps1,sh}      Make skills/ discoverable by Claude Code
-skills/monthly-trend-analysis/    The Claude Skill: SKILL.md, runner script, references
 src/financial_analysis/           Deterministic pipeline: load → calculate → validate → highlight → output
 tests/                            pytest suite (small hand-built workbooks + the ABC workbook)
 vendor/                           Intuit's QuickBooks MCP server, built locally (gitignored)
@@ -32,21 +30,32 @@ out/                              Analysis outputs (gitignored; contains client 
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -e .[dev]
-.venv\Scripts\python -m pytest                     # 62 tests
-powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1   # once per clone (macOS/Linux: sh scripts/link-skills.sh)
+.venv\Scripts\python -m pytest
 ```
+
+With the supplied workbook in `data/`, the suite runs 88 tests and all pass. Without it, as in a fresh clone, 78 pass and 10 are **skipped**: the 10 tests in `tests/test_abc_workbook.py` check the pipeline against the totals Excel cached in that workbook. The workbook is client data and is never committed, so those tests skip themselves when it is absent. Every other test builds small synthetic workbooks in a temporary directory.
 
 ### Run the analysis directly
 
 ```powershell
-.venv\Scripts\python.exe skills/monthly-trend-analysis/scripts/run_analysis.py "data/ABC Inc - Financial Statements (1) (1).xlsx" --config config/companies/abc-inc.json
+.venv\Scripts\python.exe .claude/skills/monthly-trend-analysis/scripts/run_analysis.py "data/ABC Inc - Financial Statements (1) (1).xlsx" --config config/companies/abc-inc.json
 ```
 
-This writes `out/<workbook>/<YYYY-MM>/analysis.json` (full structured result) and `brief.md` (reviewer brief). Add `--period YYYY-MM` to analyse another month. Exit codes: `0` means validation passed, possibly with warnings; `2` means validation failed; `1` means the workbook could not be read.
+This is the supported command. The runner works from any directory and needs only `openpyxl` in the environment, not an installed package: it finds the repository root and puts `src/` on the import path itself.
+
+`python -m financial_analysis <workbook> [options]` runs the same CLI, but only when the package is importable. Either install it with `pip install -e .` (the Quick start does this), or point `PYTHONPATH` at `src` (PowerShell: `$env:PYTHONPATH = "src"`). Without one of those it fails with `No module named financial_analysis`. Unlike the runner, it writes `out/` relative to the current directory.
+
+Outputs go to `out/<workbook>/<YYYY-MM>/`. Add `--period YYYY-MM` to analyse another month. Exit codes:
+
+| Exit code | Meaning | Files written |
+|---|---|---|
+| `0` | Validation passed, possibly with warnings | `analysis.json` (full structured result), `brief.md` (reviewer brief), `last_run.json`. If the figures changed since an existing `commentary.md` was written, that file is renamed to `commentary.stale.md` |
+| `2` | Validation failed | `analysis.failed.json`, `brief.failed.md`, `last_run.json`. Earlier `analysis.json`, `brief.md` and `commentary.md` are left untouched and listed in `last_run.json` as stale |
+| `1` | The workbook could not be read, or the company config is invalid (the message names the key) | Nothing |
 
 ### Run it as a Skill in Claude Code
 
-After running `link-skills`, start Claude Code in the repo and ask for a monthly trend analysis, or invoke `/monthly-trend-analysis`. The Skill runs the pipeline and stops if validation fails. Otherwise it writes owner-facing commentary to `out/.../commentary.md` using only figures from the pipeline output.
+Start Claude Code in the repository or any folder inside it (no setup step: the skill is discovered automatically) and ask for a monthly trend analysis, or invoke `/monthly-trend-analysis`. The Skill runs the pipeline and stops if validation fails. Otherwise it writes owner-facing commentary to `out/.../commentary.md` using only figures from the pipeline output.
 
 ## How the financial analysis works
 
@@ -60,8 +69,8 @@ All of the arithmetic is done in Python; Claude only interprets the results.
   - the month-to-month change in current-year earnings against net income;
   - missing months, blank cells (never treated as zero), text in number cells and duplicate months.
 - **Metrics.** Revenue (by stream), cost of goods sold, gross profit and margin, operating expenses (as presented, by category, and "core" excluding configured non-operating accounts), operating and net income. Each comes with MoM, YoY, TTM and YTD views. Balance-sheet figures are month-end balances and are never summed into TTM.
-- **New companies.** Another company needs a JSON file in `config/companies/`, not a code change. See [company-config.md](skills/monthly-trend-analysis/references/company-config.md).
-- **Output format.** See [output-schema.md](skills/monthly-trend-analysis/references/output-schema.md).
+- **New companies.** Another company needs a JSON file in `config/companies/`, not a code change. See [company-config.md](.claude/skills/monthly-trend-analysis/references/company-config.md).
+- **Output format.** See [output-schema.md](.claude/skills/monthly-trend-analysis/references/output-schema.md).
 
 ## How the QuickBooks integration works
 
@@ -75,6 +84,13 @@ Setup, OAuth, token rotation, reconnection and team hosting are covered in [inte
 
 The pipeline currently reads the Excel workbook only. Running the same skill against data from QuickBooks (the assignment's stretch goal) is not implemented.
 
-## Skill discovery note
+## Skill location
 
-Claude Code discovers project skills under `.claude/skills/<name>/`. The single source copy lives in `skills/`. `scripts/link-skills.*` creates a link to it: a directory junction on Windows, a symlink on macOS/Linux. The link is gitignored because git would otherwise commit the files a second time through the junction.
+The skill lives in `.claude/skills/monthly-trend-analysis/`, Claude Code's documented project-skill location. It is committed there as the single copy. Claude Code loads it in a session started in the repository or any folder inside it, with no links, scripts or install step. This was checked with Claude Code 2.1.296: the skill is listed in sessions started at the root, in `tests/` and in `src/financial_analysis/`, and not in a session started outside the repository.
+
+Two alternatives were rejected:
+
+- **A top-level `skills/` directory.** Claude Code only discovers that as part of a plugin. Making the repository root a plugin would also load the root `.mcp.json` as a second, plugin-scoped QuickBooks server, and would need a marketplace and an install step.
+- **A junction or symlink into `.claude/skills/`.** This needs setup on every clone, and git follows junctions on Windows.
+
+The skill's runner locates the repository root itself and is independent of the current directory. The Python engine in `src/` has no dependency on Claude Code and runs on its own with `python -m financial_analysis`.

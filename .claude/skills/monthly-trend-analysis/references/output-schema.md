@@ -96,4 +96,14 @@ Each entry in `checks[]` is `{check, status: pass|fail|skipped|flagged, descript
 - `negative_values`: revenue or expense accounts with negative postings that are not configured as expected (info).
 - `missing_values`, `period_continuity`: blank account cells and gaps between months.
 
-Each entry in `issues[]` is `{code, severity, message, sheet?, account?, period?, details?}`. The codes raised by the loader are `missing_value`, `non_numeric_value`, `formula_error`, `formula_unevaluated`, `formula_evaluated`, `missing_period`, `duplicate_period`, `ignored_column`, `unlabelled_row`, `orphan_row`, `group_without_total`, `unmatched_total` and `formula_row_excluded`.
+Each entry in `issues[]` is `{code, severity, message, sheet?, account?, period?, details?}`. The codes raised by the loader are `missing_value`, `non_numeric_value`, `formula_error`, `formula_unevaluated`, `formula_evaluated`, `missing_period`, `duplicate_period`, `ignored_column`, `unlabelled_row`, `orphan_row`, `group_without_total`, `unmatched_total` and `formula_row_excluded`. `empty_opex_category` (warning) means a configured expense category matched no account and is reported as 0.
+
+## Output files
+
+| Run outcome | Files written to `out/<workbook>/<YYYY-MM>/` |
+|---|---|
+| Exit 0 (`pass`, `pass_with_warnings`) | `analysis.json`, `brief.md`, `last_run.json`. Any `*.failed.*` files from an earlier failed run are removed. If the analysis differs from the `analysis.json` it replaces, an existing `commentary.md` is renamed to `commentary.stale.md` (`-2`, `-3`, … if taken) and named in `last_run.json` as `commentary_set_aside` |
+| Exit 2 (`fail`) | `analysis.failed.json`, `brief.failed.md`, `last_run.json`. Earlier `analysis.json`, `brief.md` and `commentary.md` are left untouched and listed in `last_run.json` as `stale_earlier_outputs` |
+| Exit 1 (unreadable workbook or invalid config) | Nothing |
+
+`last_run.json` is `{status, exit_code, analysis_period, workbook, sha256, analysis_json, brief, stale_earlier_outputs, commentary_set_aside}`.

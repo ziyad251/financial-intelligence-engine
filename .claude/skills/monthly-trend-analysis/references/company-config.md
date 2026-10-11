@@ -1,6 +1,6 @@
 # Company config
 
-The pipeline works without a config for workbooks laid out like a QuickBooks monthly export. A company config is a JSON file holding **only the keys it overrides**, and it is deep-merged onto `DEFAULTS` in `src/financial_analysis/config.py`. Keys starting with `_` are comments and are ignored.
+The pipeline works without a config for workbooks laid out like a QuickBooks monthly export. A company config is a JSON file holding **only the keys it overrides**, and it is deep-merged onto `DEFAULTS` in `src/financial_analysis/config.py`. Top-level keys starting with `_` (such as `_comment`) are comments and are ignored; anywhere else they are rejected as unknown keys.
 
 The config holds accounting judgment: which accounts are non-operating, and how expenses roll up into categories an owner can read. The accounting team owns those decisions and must review the file. Engineers should not settle them in code.
 
@@ -32,7 +32,9 @@ The pipeline needs no account names, only the layout:
 | `balance_sheet.current_year_earnings_accounts` | Current Year Earnings, Net Income | The account used for the earnings roll-forward check |
 | `thresholds.*` | see config.py | Materiality rules for highlights. See output-schema.md |
 
-Every configured classification label must match an account exactly, apart from case and whitespace. If one does not, the pipeline warns with `config_account_not_found`, which catches typos and renamed accounts.
+Every configured classification label must match an account exactly, apart from case and whitespace. If one does not, the pipeline warns with `config_account_not_found`, which catches typos and renamed accounts. An `opex_rollups` entry whose patterns match no account is reported as 0 with an `empty_opex_category` warning.
+
+The config is validated before any analysis runs. Unknown keys (at any level, so a misspelled `income_statment` is not silently ignored), values of the wrong type, out-of-range numbers and invalid regular expressions stop the run with exit code 1 and a message naming the offending key, for example `Invalid company config ...: unknown key 'income_statment'. Did you mean 'income_statement'?`.
 
 ## Onboarding checklist
 

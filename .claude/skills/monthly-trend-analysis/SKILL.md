@@ -21,25 +21,32 @@ If several workbooks or configs could apply, ask which ones to use. Do not guess
 
 ## Step 1: Run the pipeline
 
-Run this from the repository root. On Windows:
+Run this command exactly as shown. It works from any working directory:
 
 ```
-.venv/Scripts/python.exe skills/monthly-trend-analysis/scripts/run_analysis.py "data/<workbook>.xlsx" --config config/companies/<company>.json --quiet
+python "${CLAUDE_SKILL_DIR}/scripts/run_analysis.py" "data/<workbook>.xlsx" --config config/companies/<company>.json --quiet
 ```
 
-On macOS or Linux, use `.venv/bin/python`. Add `--period YYYY-MM` to analyse a month other than the latest. If `.venv` does not exist, create it with `python -m venv .venv` and then run `.venv/Scripts/pip install -e .[dev]`.
+- Workbook and config paths can be relative to the repository root or to the current directory.
+- On macOS or Linux, use `python3` if `python` is not available.
+- The runner finds the repository root itself. If the Python you started it with lacks `openpyxl`, it re-runs itself with the repository's `.venv`.
+- If it reports that `openpyxl` is not installed, the environment has not been created yet. Create it from the repository root: `python -m venv .venv`, then `.venv/Scripts/pip install -e .[dev]` on Windows or `.venv/bin/pip install -e .[dev]` on macOS/Linux.
+- Add `--period YYYY-MM` to analyse a month other than the latest.
 
-The pipeline writes two files to `out/<workbook name>/<YYYY-MM>/`:
+The pipeline writes these files to `out/<workbook name>/<YYYY-MM>/` under the repository root:
 
 - `brief.md`: every figure you need, already rounded for presentation, plus validation results, assumptions and limitations.
 - `analysis.json`: the full structured result at 2 decimal places. It has the monthly series for every metric, category and account, all comparisons, highlights and issues. Its fields are described in [references/output-schema.md](references/output-schema.md).
+- `last_run.json`: the status of the latest run and which files it wrote.
+
+If validation fails, the pipeline writes `brief.failed.md` and `analysis.failed.json` instead and leaves any earlier `analysis.json`, `brief.md` and `commentary.md` in the folder untouched. Those earlier files then describe a previous run, not this one.
 
 ## Step 2: Check the exit code and validation status
 
 | Exit code / status | What to do |
 |---|---|
-| `1` (could not analyse) | Report the error message. Usually a sheet or section was not recognised, which is fixed in the company config. Stop. |
-| `2` / `fail` | **Do not write commentary.** Report each error from the Validation section: what failed, the months affected and the workbook row. Ask the reviewer to resolve them. |
+| `1` (could not analyse) | Report the error message. Usually the workbook is unreadable, a sheet or section was not recognised, or the company config is invalid (the message names the key). Nothing was written. Stop. |
+| `2` / `fail` | **Do not write commentary.** Read `brief.failed.md` and report each error from its Validation section: what failed, the months affected and the workbook row. Say that any `analysis.json`, `brief.md` or `commentary.md` in the folder is from an earlier run and is stale (`last_run.json` lists them). Ask the reviewer to resolve the errors. |
 | `0` / `pass_with_warnings` | Continue, but open with the warnings and caveat every figure they affect. |
 | `0` / `pass` | Continue. |
 
