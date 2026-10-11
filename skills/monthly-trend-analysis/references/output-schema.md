@@ -1,0 +1,99 @@
+# analysis.json — field reference (schema 1.0)
+
+The result is deterministic for a given workbook, config and period: no timestamps and stable ordering. That lets evaluations compare it field by field. Amounts are rounded half-up to 2 dp, and percentages and percentage points to 2 dp. Month keys are `YYYY-MM`.
+
+## Top level
+
+| Field | Meaning |
+|---|---|
+| `schema_version`, `engine_version` | Bump `SCHEMA_VERSION` in `src/financial_analysis/__init__.py` when fields change meaning |
+| `source` | The workbook file name, its `sha256` and the sheets used. The hash shows which data state produced the result |
+| `config` | The config file name, whether classification and rollups are configured, the thresholds and the fiscal-year start |
+| `status` | `pass` / `pass_with_warnings` / `fail`, the worst issue severity. `fail` means no commentary is written |
+| `periods` | `available`, `analysis_period`, `prior_period`, `same_period_last_year` (null if absent), `missing_periods` and `materiality_threshold` |
+| `income_statement` | Full monthly data. See below |
+| `analysis_period` | Rows ready for commentary on the analysis month. See below |
+| `balance_sheet` | Point-in-time balances, or null when there is no balance sheet |
+| `highlights`, `highlights_dropped` | Rule-based P&L movements for the analysis month, ranked, plus the number cut off by `max_highlights` |
+| `history_outliers` | The largest unusual account values across every month (one-offs and recurring peaks) |
+| `validation` | `status`, `counts` by severity, `checks` and `issues` |
+| `assumptions`, `limitations` | Plain-English statements generated from the data state |
+
+## income_statement
+
+- `sections`: maps each section key (`revenue`, `cogs`, `opex`, `other_income`, `other_expense`) to the label of the group it was found under, or null.
+- `monthly.<metric>`: `{label, unit: amount|percent, basis: "calculated", values: {month: number|null}, notes: {month: reason}}`.
+- `ttm.<metric>`: `{values, notes}`. Amounts are 12-month sums. Ratios are the TTM numerator divided by TTM revenue.
+- `reported_totals.<key>`: the workbook's own subtotal or derived row (`basis: "reported"`) with its `source_row`. These are used only for reconciliation.
+- `opex_categories[]`: `{name, accounts[], values}`. Each operating-expense account belongs to exactly one category.
+- `accounts[]`: every leaf account, with `{key, label, section, path, category, classification, source_row, values}`.
+
+### Metrics
+
+Every metric is calculated from leaf accounts only.
+
+| Metric | Definition |
+|---|---|
+| `revenue`, `cogs`, `opex_total` | Sum of the section's accounts |
+| `gross_profit` | revenue − cogs. Absent when there is no COGS section |
+| `operating_income` | revenue − cogs − opex_total (as the statement presents it) |
+| `non_operating_in_opex` | The opex accounts classified `non_operating` or `income_tax` in the config |
+| `core_opex`, `core_operating_income` | opex_total − non_operating_in_opex, and operating_income + non_operating_in_opex |
+| `other_income`, `other_expense` | Present only if the workbook has those sections |
+| `net_income` | operating_income + other_income − other_expense |
+| `non_cash_expenses` | The accounts classified `non_cash`. This is a memo figure and is not excluded from core opex |
+| `gross_margin`, `operating_margin`, `core_operating_margin`, `net_margin`, `opex_to_revenue` | numerator ÷ revenue × 100 |
+
+When no classification is configured, the core metrics are omitted.
+
+## analysis_period
+
+- `metrics[]`: `{metric, label, unit, value, value_note, mom, yoy, ttm, ttm_note, ytd, ytd_note}`.
+- `revenue_streams[]`, `cogs_accounts[]`, `opex_categories[]`, `opex_accounts[]`, `other_accounts[]`: `{key, label, value, mom, yoy, ttm, ttm_note, ttm_pct_of_revenue, median_other_months, …}`.
+- Comparison objects (`mom`, `yoy`):
+  - Amounts: `{current, prior, abs_change, pct_change, note, comparison_period}`. `pct_change` is in % and is relative to |prior|.
+  - Percent metrics: `{current, prior, pp_change, note, comparison_period}`.
+
+### Note and reason codes
+
+| Code | Meaning |
+|---|---|
+| `comparison_period_not_in_data` | The earlier month is not in the workbook |
+| `missing_value` | An input month is blank or unusable, so the result is null |
+| `zero_base` | The earlier value is 0, so there is no % change |
+| `sign_change` | The value crossed zero, so there is no % change |
+| `negative_base` | The % was calculated against a negative base (the brief marks it `*`) |
+| `insufficient_history` | Fewer than 12 months end at this month, so there is no TTM |
+| `zero_denominator`, `negative_denominator` | Revenue is ≤ 0, so there is no margin |
+
+## Highlights
+
+Each highlight is `{rank, type, scope, key, label, period, comparison, current, baseline, abs_change | pp_change, pct_change, direction, profit_effect, materiality_threshold | threshold_pp}`.
+
+- `type`: `mom_change`, `yoy_change` or `unusual_vs_history`.
+- `scope`: `metric`, `margin`, `revenue_stream`, `cogs_account`, `opex_category`, `opex_account` or `balance_sheet`.
+- `materiality(month)` = max(`materiality_abs`, `materiality_pct_of_revenue` × |revenue|).
+
+| Kind | Rule |
+|---|---|
+| Headline metric (MoM, YoY) | \|abs change\| ≥ materiality |
+| Margin (MoM, YoY) | \|pp change\| ≥ `margin_move_pp` |
+| Line item (MoM; also YoY for streams and categories) | \|abs\| ≥ materiality and (\|%\| ≥ `min_mom_pct` or % undefined) |
+| Unusual vs history | \|value − median of all other months\| ≥ materiality and ≥ `one_off_min_ratio_to_median` × \|median\| |
+| Balance sheet (`balance_sheet.highlights`) | \|change\| ≥ `bs_materiality_abs` (MoM and vs 12 months earlier) |
+
+Highlights are ordered as headline metrics, then margins, then line items. Within each group they are sorted by size, and ties are broken by type and key.
+
+## Validation
+
+Each entry in `checks[]` is `{check, status: pass|fail|skipped|flagged, description, …}`. The checks are:
+
+- `subtotal:<sheet>:<group>`: every `Total X` row equals the sum of the leaf accounts under X. A failure is an **error** for section-level groups and a warning for nested groups. This is the double-counting guard.
+- `derived:gross_profit`, `derived:operating_income`, `derived:net_income`: the reported rows equal the calculated figures (error).
+- `opex_categories_complete`: the categories add up to opex_total (error).
+- `balance_sheet_balances`: assets = liabilities + equity (error).
+- `earnings_rollforward`: the monthly change in the balance sheet's current-year earnings equals net income. At the fiscal-year start month it equals net income itself (warning).
+- `negative_values`: revenue or expense accounts with negative postings that are not configured as expected (info).
+- `missing_values`, `period_continuity`: blank account cells and gaps between months.
+
+Each entry in `issues[]` is `{code, severity, message, sheet?, account?, period?, details?}`. The codes raised by the loader are `missing_value`, `non_numeric_value`, `formula_error`, `formula_unevaluated`, `formula_evaluated`, `missing_period`, `duplicate_period`, `ignored_column`, `unlabelled_row`, `orphan_row`, `group_without_total`, `unmatched_total` and `formula_row_excluded`.
