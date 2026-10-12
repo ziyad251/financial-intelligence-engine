@@ -24,6 +24,13 @@ The result is deterministic for a given workbook, config and period: no timestam
 - `sections`: maps each section key (`revenue`, `cogs`, `opex`, `other_income`, `other_expense`) to the label of the group it was found under, or null.
 - `monthly.<metric>`: `{label, unit: amount|percent, basis: "calculated", values: {month: number|null}, notes: {month: reason}}`.
 - `ttm.<metric>`: `{values, notes}`. Amounts are 12-month sums. Ratios are the TTM numerator divided by TTM revenue.
+- `revenue_history`: revenue across the whole workbook, independent of the analysis month.
+  - `{label, basis, first_period, last_period, months_in_data, total, total_note, monthly[], largest_mom_increase, largest_mom_decrease}`.
+  - `total` is the sum of every month from `first_period` to `last_period`. It is null, with `total_note`, when a month is missing (`comparison_period_not_in_data`) or blank (`missing_value`): no total is given for a partial period.
+  - `monthly[]` is `{period, value, prior_period, prior_value, abs_change, pct_change, note}` for every month in the data. It follows the same rules as the `mom` comparison objects below: the first month and the month after a gap have no comparison, and there is no % from a zero base or across a sign change.
+  - `largest_mom_increase` / `largest_mom_decrease` are copies of the `monthly[]` rows with the largest positive and most negative `abs_change`. Ties go to the earliest month. Each is null when there is no such move.
+  - `highest_month` / `lowest_month` are `{period, value}` for the month with the highest and lowest revenue, taken from the same monthly values. Ties go to the earliest month. Blank months are skipped. Both are null when no month has a value.
+  - `extremes_note` is null when every month from `first_period` to `last_period` has a value. Otherwise the extremes cover only the months with a value, and the note says why: `comparison_period_not_in_data` (a month is missing from the data) or `missing_value` (a month is blank).
 - `reported_totals.<key>`: the workbook's own subtotal or derived row (`basis: "reported"`) with its `source_row`. These are used only for reconciliation.
 - `opex_categories[]`: `{name, accounts[], values}`. Each operating-expense account belongs to exactly one category.
 - `accounts[]`: every leaf account, with `{key, label, section, path, category, classification, source_row, values}`.

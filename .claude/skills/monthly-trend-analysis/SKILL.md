@@ -54,6 +54,8 @@ If validation fails, the pipeline writes `brief.failed.md` and `analysis.failed.
 
 Read all of `brief.md`. Use `analysis.json` only when you need something the brief leaves out, such as one account's monthly history or the `note` explaining why a comparison is missing. Search it for the key you need rather than reading the whole file.
 
+For questions about the whole period rather than one month (total revenue, the highest- or lowest-revenue month, the largest month-over-month moves), use the "Revenue by month, full period" section of the brief, or `income_statement.revenue_history` in `analysis.json`. They hold the full-period total, every month's revenue with its prior month and MoM change, the largest MoM increase and decrease, and the highest and lowest month (`highest_month`, `lowest_month`; ties go to the earliest month). If the total is `n/a`, a month is missing or blank, and no total exists. If `extremes_note` is set (the brief says "extremes incomplete"), the highest and lowest month cover only the months with a value: say so. Never pick the highest or lowest month yourself from a table.
+
 For how a TTM figure moved over time, use the "TTM trend" section of the brief (`income_statement.ttm` in `analysis.json`). Its rows are twelve-month totals and ratios, one per month-end; the "Monthly trend" table holds the single-month figures.
 
 ## Step 4: Write the analysis

@@ -178,6 +178,26 @@ def render_brief(r: dict[str, Any], trend_months: int = 13) -> str:
             rows.append(row)
         lines += _table(["TTM to"] + [f"TTM {monthly[m]['label'].lower()}" for m in ttm_cols], rows)
 
+    hist = r["income_statement"]["revenue_history"]
+    lines += ["", f"## Revenue by month, full period ({_label(hist['first_period'])} to {_label(hist['last_period'])})", "",
+              f"- Total revenue, {hist['months_in_data']} months: {amt(hist['total'], hist['total_note'])}"]
+    for key, title in (("largest_mom_increase", "Largest MoM increase"), ("largest_mom_decrease", "Largest MoM decrease")):
+        h = hist[key]
+        lines.append(f"- {title}: " + (f"{_label(h['period'])}, {amt(h['abs_change'], signed=True)} "
+                                       f"({pct(h['pct_change'], h['note'], signed=True)}), from {amt(h['prior_value'])} "
+                                       f"in {_label(h['prior_period'])} to {amt(h['value'])}" if h else "none"))
+    incomplete = (f" (months with a value only; extremes incomplete: {NOTE_TEXT.get(hist['extremes_note'], hist['extremes_note'])})"
+                  if hist["extremes_note"] else "")
+    for key, title in (("highest_month", "Highest-revenue month"), ("lowest_month", "Lowest-revenue month")):
+        h = hist[key]
+        lines.append(f"- {title}: " + (f"{_label(h['period'])}, {amt(h['value'])}{incomplete}" if h
+                                       else f"n/a ({NOTE_TEXT.get(hist['extremes_note'], hist['extremes_note'])})"))
+    lines.append("")
+    lines += _table(["Month", "Revenue", "Prior month", "MoM", "MoM %"],
+                    [[_label(m["period"]), amt(m["value"]), amt(m["prior_value"]),
+                      amt(m["abs_change"], m["note"], signed=True), pct(m["pct_change"], m["note"], signed=True)]
+                     for m in hist["monthly"]])
+
     def line_table(title: str, items: list[dict[str, Any]], share_label: str) -> None:
         nonlocal lines
         if not items:

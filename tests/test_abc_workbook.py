@@ -70,6 +70,32 @@ def test_ttm_revenue_matches_sum_of_excel_months(result, excel_totals):
     assert result["income_statement"]["ttm"]["revenue"]["values"]["2025-11"] is None
 
 
+def test_revenue_history_matches_excel(result, excel_totals):
+    income = excel_totals["Total Income"]  # Excel's own cached totals, one per month
+    months = sorted(income)
+    hist = result["income_statement"]["revenue_history"]
+    assert hist["months_in_data"] == len(months) == 18
+    assert hist["total"] == _q(sum(income.values())) and hist["total_note"] is None
+    assert [row["value"] for row in hist["monthly"]] == [_q(income[k]) for k in months]
+    changes = {k: income[k] - income[p] for p, k in zip(months, months[1:])}
+    assert {row["period"]: row["abs_change"] for row in hist["monthly"][1:]} == {k: _q(v) for k, v in changes.items()}
+    up, down = max(changes, key=changes.get), min(changes, key=changes.get)
+    assert (hist["largest_mom_increase"]["period"], hist["largest_mom_increase"]["abs_change"]) == (up, _q(changes[up]))
+    assert (hist["largest_mom_decrease"]["period"], hist["largest_mom_decrease"]["abs_change"]) == (down, _q(changes[down]))
+
+
+def test_revenue_extremes_match_excel(result, excel_totals):
+    income = excel_totals["Total Income"]
+    # Highest and lowest month by Excel's own totals; min/max return the first (earliest) on a tie, like the pipeline.
+    months = sorted(income)
+    high, low = max(months, key=income.get), min(months, key=income.get)
+    hist = result["income_statement"]["revenue_history"]
+    assert hist["highest_month"] == {"period": high, "value": _q(income[high])}
+    assert hist["lowest_month"] == {"period": low, "value": _q(income[low])}
+    assert hist["extremes_note"] is None
+    assert (high, low) == ("2026-05", "2025-04")
+
+
 def test_known_events_are_surfaced(result):
     outliers = {(h["label"], h["period"]) for h in result["history_outliers"]}
     assert ("Income Tax Benefit", "2025-12") in outliers

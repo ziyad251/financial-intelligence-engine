@@ -20,7 +20,7 @@ from .highlights import balance_sheet_highlights, build_highlights, headline_met
 from .issues import ERROR, INFO, WARNING, AnalysisError, overall_status, sort_issues
 from .loader import Series, load_workbook
 from .periods import Period
-from .trends import balance_sheet_view, compare, ttm, ttm_ratio, ytd
+from .trends import balance_sheet_view, compare, extremes, full_period_total, mom_series, ttm, ttm_ratio, ytd
 from .validation import run_validation
 
 CENT = Decimal("0.01")
@@ -165,6 +165,12 @@ def analyze(workbook: str | Path, config: Config | None = None, period: str | No
                 notes[p.key] = note
         ttm_series[metric] = {"values": values, "notes": notes}
 
+    revenue_total, revenue_total_note = full_period_total(model.metrics["revenue"], periods)
+    revenue_history = {"label": "Revenue", "basis": "calculated", "first_period": periods[0].key,
+                       "last_period": periods[-1].key, "months_in_data": len(periods),
+                       "total": revenue_total, "total_note": revenue_total_note,
+                       **mom_series(model.metrics["revenue"], periods), **extremes(model.metrics["revenue"], periods)}
+
     highlights, dropped = build_highlights(model, target, config)
 
     balance_sheet: dict[str, Any] | None = None
@@ -222,6 +228,7 @@ def analyze(workbook: str | Path, config: Config | None = None, period: str | No
                             "notes": {p.key: r for p, r in sorted(model.ratio_reasons.get(m, {}).items())}}
                         for m in metrics_present},
             "ttm": ttm_series,
+            "revenue_history": revenue_history,
             "reported_totals": {k: {"label": r.label, "source_row": r.source_row, "basis": "reported",
                                     "values": _series(r.values)} for k, r in model.reported.items()},
             "opex_categories": [{"name": name, "accounts": model.category_members[name],

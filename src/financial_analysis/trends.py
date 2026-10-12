@@ -97,6 +97,57 @@ def ttm_ratio(numerator: Series, denominator: Series, end: Period) -> tuple[Deci
     return num / den * 100, None
 
 
+def full_period_total(series: Series, periods: list[Period]) -> tuple[Decimal | None, str | None]:
+    """Sum of every month from the first to the last period. None (with the reason) if any month is
+    missing from the data or blank: a total is never given for a partial period."""
+    if not periods:
+        return None, "insufficient_history"
+    return window_sum(series, periods[-1], periods[-1].ordinal - periods[0].ordinal + 1)
+
+
+def mom_series(series: Series, periods: list[Period]) -> dict[str, Any]:
+    """Month-over-month change for every month, plus the largest increase and decrease.
+
+    Each row uses the same rules as `compare`: no % from a zero base or across a sign change,
+    `negative_base` when the % is against a negative prior. Ties go to the earliest month.
+    """
+    rows = []
+    for p in periods:
+        c = compare(series, p, 1)
+        rows.append({"period": p.key, "value": c["current"], "prior_period": c["comparison_period"],
+                     "prior_value": c["prior"], "abs_change": c["abs_change"], "pct_change": c["pct_change"],
+                     "note": c["note"]})
+    moved = [r for r in rows if r["abs_change"] is not None]
+    increase = max((r for r in moved if r["abs_change"] > 0), key=lambda r: r["abs_change"], default=None)
+    decrease = min((r for r in moved if r["abs_change"] < 0), key=lambda r: r["abs_change"], default=None)
+    return {"monthly": rows, "largest_mom_increase": increase, "largest_mom_decrease": decrease}
+
+
+def extremes(series: Series, periods: list[Period]) -> dict[str, Any]:
+    """Highest and lowest month, `{period, value}`, over the months that have a value.
+
+    Ties go to the earliest month. Blank months are skipped, and `extremes_note` says the
+    extremes are incomplete: `comparison_period_not_in_data` when a month between the first
+    and last is missing from the data, else `missing_value` when a month is blank. Both are
+    None when no month has a value.
+    """
+    valued = [(p, series[p]) for p in periods if series.get(p) is not None]
+    highest = lowest = None
+    for p, v in valued:  # strict comparisons keep the earliest month on a tie
+        if highest is None or v > highest[1]:
+            highest = (p, v)
+        if lowest is None or v < lowest[1]:
+            lowest = (p, v)
+    note = None
+    if periods and periods[-1].ordinal - periods[0].ordinal + 1 != len(periods):
+        note = "comparison_period_not_in_data"
+    elif len(valued) < len(periods):
+        note = "missing_value"
+    return {"highest_month": {"period": highest[0].key, "value": highest[1]} if highest else None,
+            "lowest_month": {"period": lowest[0].key, "value": lowest[1]} if lowest else None,
+            "extremes_note": note}
+
+
 def balance_sheet_view(series: Series, period: Period) -> dict[str, Any]:
     """Point-in-time balance: value, change vs prior month-end and vs 12 months earlier. No TTM sum."""
     return {
