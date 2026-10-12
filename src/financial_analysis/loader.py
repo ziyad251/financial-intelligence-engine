@@ -51,6 +51,8 @@ class Row:
     values: Series = field(default_factory=dict)
     cells: dict[Period, str] = field(default_factory=dict)  # period -> cell coordinate
     has_formula: bool = False
+    # Periods whose value Excel had not cached, so the pipeline recalculated it from the cell's formula.
+    recalculated: list[Period] = field(default_factory=list)
 
     @property
     def path_label(self) -> str:
@@ -157,6 +159,7 @@ class _SheetParser:
         self.evaluator = FormulaEvaluator(lambda col, row: self.wf.cell(row, col).value)
         derived = config.income_statement["derived_rows"] if statement_key == "income_statement" else {}
         self.derived_aliases = [alias for names in derived.values() for alias in names]
+        self.evaluated: dict[int, list[tuple[Period, str]]] = {}  # sheet row -> [(period, cell)] recalculated
 
     def issue(self, code: str, severity: str, message: str, **kw) -> None:
         self.issues.append(Issue(code, severity, message, sheet=self.sheet, **kw))
@@ -192,8 +195,7 @@ class _SheetParser:
                        f"{coord} formula {text} has no cached value and could not be evaluated ({exc}); treated as missing",
                        account=label, period=period.key)
             return None, True
-        self.issue("formula_evaluated", INFO, f"{coord} had no cached value; evaluated {text} = {value}",
-                   account=label, period=period.key)
+        self.evaluated.setdefault(row, []).append((period, coord))  # reported once per row, see _report_recalculated
         return value, True
 
     def parse(self) -> Statement:
@@ -302,11 +304,34 @@ class _SheetParser:
             close_implicitly(group, "sheet ended")
 
         self._apply_blank_policy(rows)
+        self._report_recalculated(rows)
         for gap in consecutive_gaps(periods):
             self.issue("missing_period", WARNING,
                        f"{gap.label} is missing between the first and last months; comparisons that need it are not calculated",
                        period=gap.key)
         return Statement(self.sheet, title_lines, periods, rows, top, orphans)
+
+    def _report_recalculated(self, rows: list[Row]) -> None:
+        """One info issue per row whose formula cells had no value cached by Excel (the file was written by a
+        tool that does not calculate, or saved without recalculating). The values are the pipeline's own
+        evaluation of the formulas, not figures Excel reported, and the issue says what that affects."""
+        for row in rows:
+            cells = self.evaluated.get(row.sheet_row)
+            if not cells:
+                continue
+            row.recalculated = sorted(p for p, _ in cells)
+            coords = [c for _, c in sorted(cells)]
+            if row.kind == LEAF:
+                use = "This account's recalculated values are used in the calculated figures."
+            else:
+                use = ("This is a workbook total, used only to reconcile against, so its check compares the "
+                       "pipeline's sums with the workbook's formulas, not with Excel's saved results.")
+            span = coords[0] if len(coords) == 1 else f"{coords[0]}..{coords[-1]}"
+            self.issue("formula_evaluated", INFO,
+                       f"Row {row.sheet_row} '{row.label}': {len(coords)} formula cell(s) ({span}) had no value cached "
+                       f"by Excel and were recalculated by the pipeline. {use}",
+                       account=row.label, details={"row": row.sheet_row, "row_kind": row.kind, "cells": coords,
+                                                   "periods": [p.key for p in row.recalculated]})
 
     def _apply_blank_policy(self, rows: list[Row]) -> None:
         blanks_as_zero = self.config.blank_cells_as_zero

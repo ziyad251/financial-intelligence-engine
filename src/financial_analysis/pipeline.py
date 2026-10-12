@@ -258,7 +258,11 @@ def analyze(workbook: str | Path, config: Config | None = None, period: str | No
             "ttm": ttm_series,
             "revenue_history": revenue_history,
             "reported_totals": {k: {"label": r.label, "source_row": r.source_row, "basis": "reported",
-                                    "values": _series(r.values)} for k, r in model.reported.items()},
+                                    "values": _series(r.values),
+                                    # Only when Excel had not cached the values: then they are the pipeline's
+                                    # evaluation of the workbook's formulas, not figures Excel reported.
+                                    **({"recalculated_periods": [p.key for p in r.recalculated]} if r.recalculated else {})}
+                                for k, r in model.reported.items()},
             "opex_categories": [{"name": name, "accounts": model.category_members[name],
                                  "values": _series(model.categories[name])} for name in model.categories],
             "accounts": [{"key": l.key, "label": l.label, "section": l.section, "path": l.path,

@@ -31,7 +31,7 @@ The result is deterministic for a given workbook, config and period: no timestam
   - `largest_mom_increase` / `largest_mom_decrease` are copies of the `monthly[]` rows with the largest positive and most negative `abs_change`. Ties go to the earliest month. Each is null when there is no such move.
   - `highest_month` / `lowest_month` are `{period, value}` for the month with the highest and lowest revenue, taken from the same monthly values. Ties go to the earliest month. Blank months are skipped. Both are null when no month has a value.
   - `extremes_note` is null when every month from `first_period` to `last_period` has a value. Otherwise the extremes cover only the months with a value, and the note says why: `comparison_period_not_in_data` (a month is missing from the data) or `missing_value` (a month is blank).
-- `reported_totals.<key>`: the workbook's own subtotal or derived row (`basis: "reported"`) with its `source_row`. These are used only for reconciliation.
+- `reported_totals.<key>`: the workbook's own subtotal or derived row (`basis: "reported"`) with its `source_row`. These are used only for reconciliation. `recalculated_periods` is present only when Excel had not cached the row's values for those months: they are then the pipeline's evaluation of the workbook's formulas, not figures Excel reported.
 - `opex_categories[]`: `{name, accounts[], values}`. Each operating-expense account belongs to exactly one category.
 - `accounts[]`: every leaf account, with `{key, label, section, path, category, classification, source_row, values}`.
 
@@ -105,6 +105,7 @@ Each entry in `checks[]` is `{check, status: pass|fail|skipped|flagged, descript
 
 Each entry in `issues[]` is `{code, severity, message, sheet?, account?, period?, details?}`. The codes raised by the loader are `missing_value`, `non_numeric_value`, `formula_error`, `formula_unevaluated`, `formula_evaluated`, `missing_period`, `duplicate_period`, `ignored_column`, `unlabelled_row`, `orphan_row`, `group_without_total`, `unmatched_total` and `formula_row_excluded`. `empty_opex_category` (warning) means a configured expense category matched no account and is reported as 0.
 
+- `formula_evaluated` (info) is raised once per row whose formula cells had no value cached by Excel, with `details: {row, row_kind, cells, periods}`. `row_kind` is `leaf` when the recalculated values feed the figures, otherwise the row is a workbook total used only for reconciliation.
 - `uncategorised_opex` (warning) is raised once per operating-expense account that matches no `opex_rollups` rule, with `details: {path, source_row, category: "Other operating expenses", classification: null, values}` (`values` holds the months with a non-zero value). It is not raised when no rules are configured.
 - `required_metric_unavailable` (error) is raised when a required amount (`revenue`, `cogs`, `gross_profit`, `opex_total`, `operating_income`, `net_income`, where the section exists) is null for the analysis month. `details: {metrics, causes}` lists the metrics and the cell-level issues (`non_numeric_value`, `missing_value`, `formula_error`, `formula_unevaluated`) for that month. The status is then `fail`. Blank or invalid cells in other months stay warnings.
 

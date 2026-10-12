@@ -115,6 +115,7 @@ class ReportedLine:
     label: str
     source_row: int
     values: Series
+    recalculated: list[Period] = field(default_factory=list)  # periods Excel had not cached; see loader
 
 
 @dataclass
@@ -335,11 +336,12 @@ def build_income_statement(stmt: Statement, config: Config, issues: list[Issue])
     reported: dict[str, ReportedLine] = {}
     for section, group in groups.items():
         if group is not None and group.total is not None:
-            reported[section] = ReportedLine(group.total.label, group.total.sheet_row, group.total.values)
+            reported[section] = ReportedLine(group.total.label, group.total.sheet_row, group.total.values,
+                                               group.total.recalculated)
     for metric, aliases in config.income_statement["derived_rows"].items():
         rows = stmt.find_rows(aliases, (DERIVED, SUBTOTAL))
         if rows:
-            reported[metric] = ReportedLine(rows[0].label, rows[0].sheet_row, rows[0].values)
+            reported[metric] = ReportedLine(rows[0].label, rows[0].sheet_row, rows[0].values, rows[0].recalculated)
 
     return IncomeStatementModel(
         periods=periods,

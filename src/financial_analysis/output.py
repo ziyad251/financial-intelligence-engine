@@ -111,6 +111,23 @@ def _presentation_note(r: dict[str, Any]) -> list[str]:
                 "judgment to be confirmed by the accounting team."]
 
 
+def _recalculated_line(items: list[dict[str, Any]]) -> str:
+    """One brief line for every formula row Excel had not cached, each row named once with its sheet and row."""
+    def where(i: dict[str, Any]) -> str:
+        d = i.get("details", {})
+        return f"{i.get('account')} ({i.get('sheet')} row {d.get('row')}, {len(d.get('cells', []))} cells)"
+    totals = [where(i) for i in items if i.get("details", {}).get("row_kind") != "leaf"]
+    accounts = [where(i) for i in items if i.get("details", {}).get("row_kind") == "leaf"]
+    text = (f"- info `formula_evaluated` ({len(items)} rows, {sum(len(i.get('details', {}).get('cells', [])) for i in items)} "
+            "cells): Excel had not cached these formulas' values, so the pipeline recalculated them. They are not "
+            "figures Excel reported.")
+    if totals:
+        text += " Workbook totals (reconciled against the pipeline's formulas, not Excel's results): " + "; ".join(totals) + "."
+    if accounts:
+        text += " Accounts whose recalculated values are used in the figures: " + "; ".join(accounts) + "."
+    return text
+
+
 def _unclassified_section(issues: list[dict[str, Any]], period: str) -> list[str]:
     """Accounts the config does not recognise, made prominent so a reviewer classifies them before sign-off."""
     items = [i for i in issues if i["code"] == "uncategorised_opex"]
@@ -160,7 +177,10 @@ def render_brief(r: dict[str, Any], trend_months: int = 13) -> str:
         if i["severity"] == "info":
             info.setdefault(i["code"], []).append(i)
     for code, items in info.items():
-        names = [i.get("account") or i["message"] for i in items]
+        if code == "formula_evaluated":
+            lines.append(_recalculated_line(items))
+            continue
+        names = list(dict.fromkeys(i.get("account") or i["message"] for i in items))
         lines.append(f"- info `{code}` ({len(items)}): " + "; ".join(names))
     failed = [c for c in v["checks"] if c["status"] == "fail"]
     passed = [c for c in v["checks"] if c["status"] == "pass"]

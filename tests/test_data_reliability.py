@@ -218,3 +218,35 @@ def test_blocked_month_leaves_earlier_outputs_marked_as_earlier(tmp_path, capsys
     assert "the latest run failed" in capsys.readouterr().out
 
 
+# --- 7. formulas without Excel's cached values ----------------------------------------------------
+
+def test_uncached_formulas_are_reported_once_per_row_as_recalculated(tmp_path):
+    # openpyxl writes formulas without cached values; Insurance is an account whose cells are formulas.
+    r = analyze(make_workbook(tmp_path / "f.xlsx", MONTHS, rows(extra_opex=[(1, "Insurance", "=40+5")])))
+    recalc = {i["account"]: i for i in issues(r, "formula_evaluated")}
+    assert set(recalc) == {"Total Income", "Total Cost of Goods Sold", "Total Operating Expenses", "Insurance"}
+    assert all(i["severity"] == "info" for i in recalc.values())
+    total_income = recalc["Total Income"]
+    assert total_income["details"] == {"row": 10, "row_kind": "subtotal", "cells": ["C10", "D10", "E10"],
+                                       "periods": ["2026-01", "2026-02", "2026-03"]}
+    assert recalc["Insurance"]["details"]["row_kind"] == "leaf"
+    # Recalculated, not invented: the workbook's own totals equal the sums worked out by hand.
+    reported = r["income_statement"]["reported_totals"]
+    assert reported["revenue"]["values"] == {"2026-01": 1200.0, "2026-02": 1310.0, "2026-03": 1420.0}
+    assert reported["revenue"]["recalculated_periods"] == ["2026-01", "2026-02", "2026-03"]
+    assert metric(r, "opex_total")["value"] == 400 + 70 + 45
+
+    line = next(l for l in render_brief(r).splitlines() if "`formula_evaluated`" in l)
+    assert line.startswith("- info `formula_evaluated` (4 rows, 12 cells)") and "not figures Excel reported" in line
+    assert line.count("Total Income (Income Statement row 10, 3 cells)") == 1
+    assert "Accounts whose recalculated values are used in the figures: Insurance (Income Statement row 17, 3 cells)" in line
+
+
+@pytest.mark.skipif(not ABC_WORKBOOK.exists(), reason="supplied workbook not present (client data, not committed)")
+def test_supplied_workbook_uses_excel_cached_values():
+    before = ABC_WORKBOOK.read_bytes()
+    r = analyze(ABC_WORKBOOK, Config.load(ROOT / "config" / "companies" / "abc-inc.json"))
+    assert not issues(r, "formula_evaluated") and r["status"] == "pass"
+    assert not any("recalculated_periods" in t for t in r["income_statement"]["reported_totals"].values())
+    assert not issues(r, "required_metric_unavailable") and not issues(r, "uncategorised_opex")
+    assert ABC_WORKBOOK.read_bytes() == before
