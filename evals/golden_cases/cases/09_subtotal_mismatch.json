@@ -1,0 +1,24 @@
+{
+  "id": "09_subtotal_mismatch",
+  "title": "Reported subtotal disagrees with its accounts: error, exit 2, figures from accounts only",
+  "fixture": "subtotal_mismatch",
+  "config": null,
+  "steps": [
+    {
+      "exit_code": 2,
+      "trace_exit": 1,
+      "checks": [
+        {"type": "status", "value": "fail"},
+        {"type": "issue_codes", "severity": "error", "equals": ["subtotal_mismatch"]},
+        {"type": "issue_codes", "severity": "warning", "equals": []},
+        {"type": "issue", "match": {"code": "subtotal_mismatch", "severity": "error", "account": "Total Income"},
+         "details": {"mismatches[period=2026-03].reported": {"approx": 1250}, "mismatches[period=2026-03].calculated": {"approx": 1200}}},
+        {"type": "equals", "path": "validation.checks[check=subtotal:Income Statement:Income].status", "value": "fail"},
+        {"type": "equals", "path": "validation.checks[check=subtotal:Income Statement:Income].mismatches", "value": 1, "why": "only March differs"},
+        {"type": "approx", "path": "income_statement.monthly.revenue.values.2026-03", "value": 1200, "calc": "from the account (1,200), not the reported total (1,250)"},
+        {"type": "files", "equals": ["analysis.failed.json", "brief.failed.md", "last_run.json"]},
+        {"type": "file_contains", "file": "brief.failed.md", "text": ["Do not write commentary", "subtotal_mismatch"]}
+      ]
+    }
+  ]
+}

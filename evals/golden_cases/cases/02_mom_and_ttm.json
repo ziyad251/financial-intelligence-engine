@@ -1,0 +1,54 @@
+{
+  "id": "02_mom_and_ttm",
+  "title": "MoM and TTM over 14 months: an increase, a decrease, TTM windows, zero base",
+  "fixture": "mom_ttm",
+  "config": null,
+  "steps": [
+    {
+      "exit_code": 0,
+      "checks": [
+        {"type": "status", "value": "pass"},
+        {"type": "issue_codes", "severity": "error", "equals": []},
+        {"type": "issue_codes", "severity": "warning", "equals": []},
+        {"type": "equals", "path": "periods.analysis_period", "value": "2026-02"},
+
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].value", "value": 1980, "calc": "Feb 2026 Product Sales"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].mom.abs_change", "value": -220, "calc": "1,980 - Jan 2026 2,200 (the decrease)"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].mom.pct_change", "value": -10.00, "calc": "-220 / 2,200"},
+        {"type": "approx", "path": "income_statement.revenue_history.monthly[period=2026-01].abs_change", "value": 100, "calc": "Jan 2026 2,200 - Dec 2025 2,100 (an increase)"},
+        {"type": "approx", "path": "income_statement.revenue_history.monthly[period=2026-01].pct_change", "value": 4.76, "calc": "100 / 2,100 = 4.7619%"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].yoy.abs_change", "value": 880, "calc": "1,980 - Feb 2025 1,100"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].yoy.pct_change", "value": 80.00, "calc": "880 / 1,100"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].ytd", "value": 4180, "calc": "Jan 2026 2,200 + Feb 2026 1,980"},
+
+        {"type": "approx", "path": "analysis_period.metrics[metric=gross_profit].value", "value": 1580, "calc": "1,980 - 400"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=gross_profit].mom.pct_change", "value": -12.22, "calc": "(1,580 - 1,800) / 1,800 = -12.222%"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=gross_margin].value", "value": 79.80, "calc": "1,580 / 1,980 = 79.798%"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=gross_margin].mom.pp_change", "value": -2.02, "calc": "79.798% - Jan 1,800/2,200 = 81.818% -> -2.020 pp"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=opex_total].value", "value": 650, "calc": "Rent 500 + Travel 150"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=operating_income].value", "value": 930, "calc": "1,580 - 650"},
+
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].ttm", "value": 20680, "calc": "Mar 2025..Jan 2026 = 1,200+1,300+...+2,200 = 18,700 (11 months), + Feb 2026 1,980"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=gross_profit].ttm", "value": 15880, "calc": "20,680 - 12 x 400"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=gross_margin].ttm", "value": 76.79, "calc": "15,880 / 20,680 = 76.789% (ratio of TTM totals, not an average of monthly margins)"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=opex_total].ttm", "value": 6150, "calc": "12 x 500 + 150"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=operating_income].ttm", "value": 9730, "calc": "15,880 - 6,150"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=operating_margin].ttm", "value": 47.05, "calc": "9,730 / 20,680 = 47.050%"},
+        {"type": "approx", "path": "income_statement.ttm.revenue.values.2026-01", "value": 19800, "calc": "Feb 2025..Jan 2026 = 1,100+...+2,200 (12 months)"},
+        {"type": "approx", "path": "income_statement.ttm.revenue.values.2025-12", "value": 18600, "calc": "Jan..Dec 2025 = 1,000+...+2,100: the first complete TTM"},
+        {"type": "equals", "path": "income_statement.ttm.revenue.values.2025-11", "value": null, "why": "only 11 months end at Nov 2025"},
+        {"type": "equals", "path": "income_statement.ttm.revenue.notes.2025-11", "value": "insufficient_history"},
+
+        {"type": "approx", "path": "income_statement.revenue_history.total", "value": 22780, "calc": "1,000+...+2,200 (13 months) = 20,800, + 1,980"},
+        {"type": "equals", "path": "income_statement.revenue_history.highest_month", "value": {"period": "2026-01", "value": 2200.0}},
+        {"type": "equals", "path": "income_statement.revenue_history.lowest_month", "value": {"period": "2025-01", "value": 1000.0}},
+        {"type": "equals", "path": "income_statement.revenue_history.largest_mom_increase.period", "value": "2025-02", "why": "every rise is +100; ties go to the earliest month"},
+        {"type": "equals", "path": "income_statement.revenue_history.largest_mom_decrease.period", "value": "2026-02"},
+
+        {"type": "approx", "path": "analysis_period.opex_accounts[label=Travel].mom.abs_change", "value": 150, "calc": "150 - 0"},
+        {"type": "equals", "path": "analysis_period.opex_accounts[label=Travel].mom.pct_change", "value": null, "why": "a % change from zero is undefined"},
+        {"type": "equals", "path": "analysis_period.opex_accounts[label=Travel].mom.note", "value": "zero_base"}
+      ]
+    }
+  ]
+}

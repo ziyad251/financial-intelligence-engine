@@ -1,0 +1,47 @@
+{
+  "id": "05_unmapped_expense_account",
+  "title": "Unexpected expense account: named warning, kept in totals, unclassified, listed for review",
+  "fixture": "unmapped_account",
+  "config": {
+    "company_name": "Golden Test Co",
+    "income_statement": {
+      "account_classes": {"non_operating": ["Interest Expense"]},
+      "opex_rollups": [
+        {"name": "People", "match": ["> Salaries$"]},
+        {"name": "Facilities", "match": ["> Rent$"]},
+        {"name": "Interest (non-operating)", "match": ["> Interest Expense$"]}
+      ]
+    }
+  },
+  "steps": [
+    {
+      "exit_code": 0,
+      "checks": [
+        {"type": "status", "value": "pass_with_warnings"},
+        {"type": "issue_codes", "severity": "error", "equals": []},
+        {"type": "issue_codes", "severity": "warning", "equals": ["uncategorised_opex"]},
+        {"type": "issue_count", "code": "uncategorised_opex", "equals": 1},
+        {"type": "issue", "match": {"code": "uncategorised_opex", "severity": "warning", "account": "Crypto Mining Fees"},
+         "details": {"source_row": 17, "path": "Operating Expenses > Crypto Mining Fees",
+                     "category": "Other operating expenses", "classification": null, "values": {"2026-03": 75.0}}},
+
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].value", "value": 5400, "calc": "Product Sales"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=gross_profit].value", "value": 4320, "calc": "5,400 - 1,080"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=opex_total].value", "value": 2925, "calc": "Salaries 2,000 + Rent 800 + Interest 50 + Crypto Mining Fees 75 (as presented includes it)"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=core_opex].value", "value": 2875, "calc": "2,925 - Interest 50; the unknown account stays in core until classified"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=operating_income].value", "value": 1395, "calc": "4,320 - 2,925"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=core_operating_income].value", "value": 1445, "calc": "4,320 - 2,875"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=core_operating_margin].value", "value": 26.76, "calc": "1,445 / 5,400 = 26.759%"},
+
+        {"type": "equals", "path": "income_statement.opex_categories[name=Other operating expenses].accounts", "value": ["Crypto Mining Fees"]},
+        {"type": "approx", "path": "income_statement.opex_categories[name=Other operating expenses].values.2026-03", "value": 75, "calc": "Crypto Mining Fees"},
+        {"type": "approx", "path": "income_statement.opex_categories[name=People].values.2026-03", "value": 2000, "calc": "Salaries"},
+        {"type": "approx", "path": "income_statement.opex_categories[name=Facilities].values.2026-03", "value": 800, "calc": "Rent"},
+        {"type": "equals", "path": "income_statement.accounts[label=Crypto Mining Fees].classification", "value": null, "why": "no classification is invented"},
+        {"type": "equals", "path": "validation.checks[check=opex_categories_complete].status", "value": "pass", "why": "2,000 + 800 + 50 + 75 = 2,925: nothing dropped"},
+        {"type": "file_contains", "file": "brief.md", "text": ["## Accounts needing classification",
+          "| Crypto Mining Fees | 17 | Operating Expenses > Crypto Mining Fees | 75 | 1: Mar 2026 |"]}
+      ]
+    }
+  ]
+}

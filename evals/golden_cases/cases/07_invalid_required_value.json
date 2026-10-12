@@ -1,0 +1,45 @@
+{
+  "id": "07_invalid_required_value",
+  "title": "Text in a required revenue cell for the analysis month: blocked; earlier outputs not mistaken for fresh",
+  "fixture": "invalid_required_value",
+  "config": {"company_name": "Golden Test Co"},
+  "steps": [
+    {
+      "args": ["--period", "2026-02"],
+      "exit_code": 0,
+      "write_commentary": "February 2026 revenue was 1,310 and gross profit was 980.",
+      "trace_exit": 0,
+      "checks": [
+        {"type": "status", "value": "pass_with_warnings", "why": "the bad cell is in March, not in the analysed month"},
+        {"type": "issue_codes", "severity": "error", "equals": []},
+        {"type": "issue_codes", "severity": "warning", "equals": ["non_numeric_value"]},
+        {"type": "issue", "match": {"code": "non_numeric_value", "account": "Product Sales", "period": "2026-03"},
+         "message_contains": ["F8 holds text 'n/a'"]},
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].value", "value": 1310, "calc": "Feb: 1,100 + 210"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=gross_profit].value", "value": 980, "calc": "1,310 - 330"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=operating_income].value", "value": 520, "calc": "980 - (400 + 60)"}
+      ]
+    },
+    {
+      "args": [],
+      "exit_code": 2,
+      "trace_exit": 4,
+      "checks": [
+        {"type": "status", "value": "fail"},
+        {"type": "issue_codes", "severity": "error", "equals": ["required_metric_unavailable"]},
+        {"type": "issue", "match": {"code": "required_metric_unavailable", "severity": "error", "period": "2026-03"},
+         "details": {"metrics": ["revenue", "gross_profit", "operating_income", "net_income"],
+                     "causes[code=non_numeric_value].account": "Product Sales"}},
+        {"type": "equals", "path": "analysis_period.metrics[metric=revenue].value", "value": null, "why": "never a revenue built from a partial set of accounts"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=cogs].value", "value": 360, "calc": "Materials, unaffected"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=opex_total].value", "value": 470, "calc": "400 + 70, unaffected"},
+
+        {"type": "files", "equals": ["analysis.failed.json", "analysis.json", "brief.failed.md", "brief.md", "commentary.md", "last_run.json"]},
+        {"type": "unchanged_since_step", "step": 1, "files": ["analysis.json", "brief.md", "commentary.md"]},
+        {"type": "file_contains", "file": "brief.failed.md", "text": ["Do not write commentary", "Earlier outputs in this folder are not from this run"]},
+        {"type": "equals", "in": "last_run", "path": "status", "value": "fail"},
+        {"type": "equals", "in": "last_run", "path": "stale_earlier_outputs", "value": ["analysis.json", "brief.md", "commentary.md"]}
+      ]
+    }
+  ]
+}

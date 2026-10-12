@@ -1,0 +1,32 @@
+{
+  "id": "08_formula_cache",
+  "title": "Formulas without Excel's cached values: recalculated, reported per row, never passed off as Excel's",
+  "fixture": "formula_cache",
+  "config": null,
+  "steps": [
+    {
+      "exit_code": 0,
+      "checks": [
+        {"type": "status", "value": "pass", "why": "recalculation is information, not a fault"},
+        {"type": "issue_codes", "severity": "error", "equals": []},
+        {"type": "issue_codes", "severity": "warning", "equals": []},
+        {"type": "issue_count", "code": "formula_evaluated", "equals": 4, "why": "Total Income, Total COGS, Insurance, Total Opex: one issue per row, not per cell"},
+        {"type": "issue", "match": {"code": "formula_evaluated", "severity": "info", "account": "Total Income"},
+         "details": {"row": 9, "row_kind": "subtotal", "cells": ["D9", "E9", "F9"], "periods": ["2026-01", "2026-02", "2026-03"]}},
+        {"type": "issue", "match": {"code": "formula_evaluated", "severity": "info", "account": "Insurance"},
+         "details": {"row": 15, "row_kind": "leaf", "cells": ["D15", "E15", "F15"]}},
+
+        {"type": "equals", "path": "income_statement.reported_totals.revenue.recalculated_periods", "value": ["2026-01", "2026-02", "2026-03"]},
+        {"type": "approx", "path": "income_statement.reported_totals.revenue.values.2026-03", "value": 1200, "calc": "=SUM(F8:F8) evaluated: Product Sales 1,200"},
+        {"type": "approx", "path": "income_statement.accounts[label=Insurance].values.2026-01", "value": 45, "calc": "=40+5"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=opex_total].value", "value": 445, "calc": "Rent 400 + Insurance 45"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=operating_income].value", "value": 395, "calc": "1,200 - 360 - 445"},
+        {"type": "equals", "path": "validation.checks[check=subtotal:Income Statement:Income].status", "value": "pass"},
+        {"type": "file_contains", "file": "brief.md", "text": [
+          "`formula_evaluated` (4 rows, 12 cells)", "They are not figures Excel reported.",
+          "Total Income (Income Statement row 9, 3 cells)",
+          "Accounts whose recalculated values are used in the figures: Insurance (Income Statement row 15, 3 cells)"]}
+      ]
+    }
+  ]
+}

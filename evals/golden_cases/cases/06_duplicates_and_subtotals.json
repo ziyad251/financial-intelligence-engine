@@ -1,0 +1,34 @@
+{
+  "id": "06_duplicates_and_subtotals",
+  "title": "Repeated account name, nested subtotal and a stray total: no double-counting",
+  "fixture": "duplicates_and_subtotals",
+  "config": null,
+  "steps": [
+    {
+      "exit_code": 0,
+      "checks": [
+        {"type": "status", "value": "pass_with_warnings"},
+        {"type": "issue_codes", "severity": "error", "equals": []},
+        {"type": "issue_codes", "severity": "warning", "equals": ["duplicate_account", "unmatched_total"]},
+        {"type": "issue", "match": {"code": "duplicate_account", "severity": "warning", "account": "Software"}},
+        {"type": "issue", "match": {"code": "unmatched_total", "severity": "warning", "account": "Total Marketing"}},
+
+        {"type": "approx", "path": "analysis_period.metrics[metric=opex_total].value", "value": 4460,
+         "calc": "Wages 3,000 + Payroll Taxes 300 + Rent 1,000 + Software 100 + Software 60. Adding Total Payroll (3,300) would give 7,760; adding Total Marketing (999) 5,459"},
+        {"type": "approx", "path": "income_statement.monthly.opex_total.values.2026-01", "value": 4450, "calc": "3,000 + 300 + 1,000 + 100 + 50"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=revenue].value", "value": 9000, "calc": "Product Sales"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=gross_profit].value", "value": 6500, "calc": "9,000 - 2,500"},
+        {"type": "approx", "path": "analysis_period.metrics[metric=operating_income].value", "value": 2040, "calc": "6,500 - 4,460"},
+
+        {"type": "approx", "path": "income_statement.accounts[key=opex:software].values.2026-03", "value": 100, "calc": "first Software row (19)"},
+        {"type": "approx", "path": "income_statement.accounts[key=opex:software-r20].values.2026-03", "value": 60, "calc": "second Software row (20), kept separately"},
+        {"type": "absent", "path": "income_statement.accounts[label=Total Payroll]", "why": "subtotals are never accounts"},
+        {"type": "absent", "path": "income_statement.accounts[label=Total Marketing]", "why": "a total that closes no group is excluded"},
+        {"type": "approx", "path": "income_statement.opex_categories[name=Payroll].values.2026-03", "value": 3300, "calc": "Wages 3,000 + Payroll Taxes 300 (default categories: direct children of the opex section)"},
+        {"type": "approx", "path": "income_statement.opex_categories[name=Software].values.2026-03", "value": 160, "calc": "100 + 60"},
+        {"type": "equals", "path": "validation.checks[check=subtotal:Income Statement:Payroll].status", "value": "pass", "why": "3,300 = 3,000 + 300"},
+        {"type": "equals", "path": "validation.checks[check=subtotal:Income Statement:Operating Expenses].status", "value": "pass", "why": "reported 3,300 + 1,000 + 100 + 60 = 4,460 = sum of accounts"}
+      ]
+    }
+  ]
+}
