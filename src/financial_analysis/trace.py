@@ -12,9 +12,15 @@ The commentary must also end with the source line printed in brief.md:
 and every value in it must match the saved analysis.json (its period, its workbook hash and
 the analysis_id computed from it). The digits in that line are not checked as figures.
 
+The folder itself must be consistent: brief.md must print the same source line as
+analysis.json (so the numbers are traced against one analysis), and when last_run.json
+exists the latest run must not have failed and must describe that same analysis (period,
+workbook sha256, analysis_id). last_run.json can only reject: the commentary is accepted on
+the strength of analysis.json, from which the analysis_id is recomputed.
+
 Exit codes: 0 = source line matches and every number traced, 4 = source line missing or
-not matching the saved analysis (listed), 3 = untraced numbers found (listed), 1 = an input
-file is missing or unreadable.
+not matching the saved analysis, or the folder's outputs are stale or inconsistent (listed),
+3 = untraced numbers found (listed), 1 = an input file is missing or unreadable.
 
 This proves a figure came from the outputs, not that it is used correctly: a number
 quoted with the wrong sign, month or label still traces.
@@ -29,7 +35,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .output import analysis_id
+from .output import analysis_id, source_line
 
 NUMBER = re.compile(r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?")
 ISO_MONTH = re.compile(r"\b\d{4}-\d{2}(?:-\d{2})?\b")
@@ -99,6 +105,26 @@ def source_problems(commentary: str, analysis: Any) -> list[str]:
             for key, value in expected.items() if src[key] != value]
 
 
+def folder_problems(analysis: Any, brief: str, last_run: Any) -> list[str]:
+    """Why the saved outputs in a folder cannot be treated as one current analysis (empty if they can).
+    `last_run` is the parsed last_run.json, or None when the folder has none."""
+    problems = []
+    if analysis.get("status") == "fail":
+        problems.append("analysis.json records a failed validation")
+    if source_line(analysis) not in brief:
+        problems.append("brief.md does not print the source line of analysis.json: they are from different runs")
+    if last_run is None:
+        return problems
+    if last_run.get("status") == "fail" or last_run.get("exit_code") not in (0, None):
+        problems.append(f"the latest run failed ({last_run.get('analysis_json')}); analysis.json is from an earlier "
+                        "run and is stale")
+    expected = {"analysis_period": analysis["periods"]["analysis_period"], "sha256": analysis["source"]["sha256"],
+                "analysis_id": analysis_id(analysis)}
+    problems += [f"last_run.json {key} is {last_run.get(key)}, but analysis.json has {value}: the latest run "
+                 "produced a different analysis" for key, value in expected.items() if last_run.get(key) != value]
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="financial_analysis.trace", description=__doc__.splitlines()[0])
     parser.add_argument("folder", type=Path, help="out/<workbook>/<YYYY-MM> folder holding the saved outputs")
@@ -112,17 +138,19 @@ def main(argv: list[str] | None = None) -> int:
         commentary = commentary_path.read_text(encoding="utf-8")
         analysis = json.loads((args.folder / "analysis.json").read_text(encoding="utf-8"))
         brief = (args.folder / "brief.md").read_text(encoding="utf-8")
+        last_run_path = args.folder / "last_run.json"
+        last_run = json.loads(last_run_path.read_text(encoding="utf-8")) if last_run_path.exists() else None
     except (OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    problems = source_problems(commentary, analysis)
+    problems = source_problems(commentary, analysis) + folder_problems(analysis, brief, last_run)
     for problem in problems:
         print(f"SOURCE {problem}")
     found = untraced_numbers(commentary, analysis, brief)
     for token, context in found:
         print(f"UNTRACED {token}: ...{context}...")
-    print(f"{commentary_path.name}: source line {'does not match' if problems else 'matches'} the saved analysis; "
+    print(f"{commentary_path.name}: source line {'does not match' if problems else 'matches'} the current saved analysis; "
           f"{len(found)} untraced number(s) against analysis.json and brief.md in {args.folder}")
     return 4 if problems else 3 if found else 0
 

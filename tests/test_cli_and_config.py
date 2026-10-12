@@ -156,15 +156,16 @@ def test_exit_codes_and_outputs_for_a_passing_run(tmp_path, capsys):
 
 
 def test_failed_run_preserves_earlier_valid_outputs(tmp_path, capsys):
+    # The same workbook (same bytes) passes with a loose tolerance and fails with the default one:
+    # its reported opex total is 0.5 above the accounts (60 + 0.5).
     wb, out = tmp_path / "Client.xlsx", tmp_path / "out"
-    make_workbook(wb, MONTHS, rows())
-    original = wb.read_bytes()  # rebuilding would change the file's timestamps and hash, so keep the exact bytes
-    assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
+    make_workbook(wb, MONTHS, rows(opex_total="=SUM({c}14:{c}15)+0.5"))
+    original = wb.read_bytes()
+    loose = write_config(tmp_path, {"reconciliation_tolerance": 1})
+    assert run(capsys, wb, "--config", loose, "--out-dir", out, "--quiet")[0] == 0
     (out / "commentary.md").write_text("commentary from the passing run\n", encoding="utf-8")
     before = snapshot(out)
 
-    # Same file name, but the reported total is now 5 too high (60 + 5), so subtotal and validation fail.
-    make_workbook(wb, MONTHS, rows(opex_total="=SUM({c}14:{c}15)+5"))
     code, err = run(capsys, wb, "--out-dir", out, "--quiet")
     assert code == 2
     assert "VALIDATION FAILED" in err and "treat them as stale" in err
@@ -187,7 +188,7 @@ def test_failed_run_preserves_earlier_valid_outputs(tmp_path, capsys):
 
     # A later passing run on the original workbook replaces the valid outputs and clears the failure files.
     wb.write_bytes(original)
-    assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
+    assert run(capsys, wb, "--config", loose, "--out-dir", out, "--quiet")[0] == 0
     names = {p.name for p in out.iterdir()}
     assert "analysis.failed.json" not in names and "brief.failed.md" not in names
     assert json.loads((out / "last_run.json").read_text(encoding="utf-8"))["status"] == "pass"
@@ -206,19 +207,21 @@ def test_first_run_failing_lists_no_stale_outputs(tmp_path, capsys):
 # --- commentary from an earlier analysis is set aside, never shown as current -------------------
 
 def test_changed_figures_set_aside_old_commentary(tmp_path, capsys):
+    # The workbook bytes never change here; the analysis changes because the config does (each config's
+    # thresholds are part of the analysis). A changed workbook is covered in test_provenance_safeguards.py.
     wb, out = tmp_path / "Client.xlsx", tmp_path / "out"
     make_workbook(wb, MONTHS, rows())
     assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
     (out / "commentary.md").write_text("March revenue was 120.\n", encoding="utf-8")
 
-    # Still valid, but March sales are now 999, so the commentary describes figures that no longer exist.
-    make_workbook(wb, MONTHS, rows(sales=(100, 110, 999)))
-    code, err = run(capsys, wb, "--out-dir", out, "--quiet")
+    # Still valid, but the materiality threshold differs, so the commentary describes another analysis.
+    cfg_999 = write_config(tmp_path, {"thresholds": {"materiality_abs": 999}}, "cfg999.json")
+    code, err = run(capsys, wb, "--config", cfg_999, "--out-dir", out, "--quiet")
     assert code == 0 and "renamed to commentary.stale.md" in err
     assert not (out / "commentary.md").exists()
     assert (out / "commentary.stale.md").read_text(encoding="utf-8") == "March revenue was 120.\n"
     analysis = json.loads((out / "analysis.json").read_text(encoding="utf-8"))
-    assert analysis["income_statement"]["monthly"]["revenue"]["values"]["2026-03"] == 999.0
+    assert analysis["config"]["thresholds"]["materiality_abs"] == 999
     last = json.loads((out / "last_run.json").read_text(encoding="utf-8"))
     assert last["commentary_set_aside"] == "commentary.stale.md"
     # The old commentary has no source line, so its origin is recorded as unknown, not guessed.
@@ -227,10 +230,10 @@ def test_changed_figures_set_aside_old_commentary(tmp_path, capsys):
     # A second change never overwrites the first set-aside commentary. This one carries its source
     # line, which is copied into last_run.json when it is set aside.
     analysis_999 = json.loads((out / "analysis.json").read_text(encoding="utf-8"))
-    second = "March revenue was 999.\n\n" + source_line(analysis_999) + "\n"
+    second = "March revenue was 120.\n\n" + source_line(analysis_999) + "\n"
     (out / "commentary.md").write_text(second, encoding="utf-8")
-    make_workbook(wb, MONTHS, rows(sales=(100, 110, 500)))
-    assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
+    cfg_500 = write_config(tmp_path, {"thresholds": {"materiality_abs": 500}}, "cfg500.json")
+    assert run(capsys, wb, "--config", cfg_500, "--out-dir", out, "--quiet")[0] == 0
     assert (out / "commentary.stale.md").read_text(encoding="utf-8") == "March revenue was 120.\n"
     assert (out / "commentary.stale-2.md").read_text(encoding="utf-8") == second
     last = json.loads((out / "last_run.json").read_text(encoding="utf-8"))

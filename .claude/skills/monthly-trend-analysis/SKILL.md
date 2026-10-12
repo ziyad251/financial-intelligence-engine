@@ -43,6 +43,8 @@ The pipeline writes these files to `out/<workbook name>/<YYYY-MM>/` under the re
 - `analysis.json`: the full structured result at 2 decimal places. It has the monthly series for every metric, category and account, all comparisons, highlights and issues. Its fields are described in [references/output-schema.md](references/output-schema.md).
 - `last_run.json`: the status of the latest run, which files it wrote, its `analysis_id` (a hash of the analysis content), its `run_at` time, the exact workbook path and config used, and the company check (`company_check.result`).
 
+A folder holds the analysis of one workbook content only. If it already holds outputs from a different workbook (for example, another file saved under the same name), the runner first moves them, unchanged, into a `superseded-<sha256 prefix>-<time>/` subfolder and says so. Never use or quote files from a `superseded-*` folder as current.
+
 If validation fails, the pipeline writes `brief.failed.md` and `analysis.failed.json` instead and leaves any earlier `analysis.json`, `brief.md` and `commentary.md` in the folder untouched. Those earlier files then describe a previous run, not this one.
 
 If a passing run's analysis differs from the one already saved, an existing `commentary.md` is renamed `commentary.stale.md` (or `-2`, `-3`, ...). A stale commentary describes an earlier analysis: never present it, or quote from it, as current. `last_run.json` -> `commentary_set_aside_source` holds the source line it carried. When that is `null`, the commentary recorded no source and the analysis it came from is **unknown**: say so, and do not guess or reconstruct it.
@@ -117,7 +119,7 @@ It records which analysis the commentary was written from, so a later reader can
 python "${CLAUDE_SKILL_DIR}/scripts/check_commentary.py" "out/<workbook name>/<YYYY-MM>"
 ```
 
-Exit `0` means the source line matches the saved analysis and every number was found in the saved outputs. Exit `4` means the source line is missing, duplicated or names a different period, workbook or analysis: copy it again from the current `brief.md` (if the analysis changed, rewrite the commentary from the new brief). Exit `3` lists each untraced number: replace it with a figure from the outputs, or say the figure was not calculated, and run the check again. Do not return the analysis until the check passes. The check proves a number came from the outputs, not that it is quoted with the right sign, month or label, so keep the rules above. Then show the analysis in the reply.
+Exit `0` means the source line matches the saved analysis and every number was found in the saved outputs. Exit `4` means the source line is missing, duplicated or names a different period, workbook or analysis: copy it again from the current `brief.md` (if the analysis changed, rewrite the commentary from the new brief). Exit `4` also means the folder is not one current analysis: the latest run failed, or `brief.md`, `analysis.json` and `last_run.json` describe different runs. Then re-run the pipeline; never edit `last_run.json` or the source line to make the check pass. Exit `3` lists each untraced number: replace it with a figure from the outputs, or say the figure was not calculated, and run the check again. Do not return the analysis until the check passes. The check proves a number came from the outputs, not that it is quoted with the right sign, month or label, so keep the rules above. Then show the analysis in the reply.
 
 ## Using the skill for another company
 

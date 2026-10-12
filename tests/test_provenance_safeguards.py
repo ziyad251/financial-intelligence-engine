@@ -153,6 +153,101 @@ def test_invalid_explicit_workbook_is_refused(tmp_path, capsys, make, message):
     assert code == 1 and message in err and not out.exists()
 
 
+# --- 4. same file name, different contents: never confused with the earlier analysis ------------
+
+def test_same_filename_different_contents_is_not_confused(tmp_path, capsys):
+    data, out = tmp_path / "data", tmp_path / "out"
+    wb = workbook(data / "Client.xlsx", sales=(100, 110, 120))
+    first_sha = sha(wb)
+    assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
+    write_commentary(out)
+    before = {p.name: p.read_bytes() for p in out.iterdir()}
+    first_id = analysis_id(load(out))
+
+    workbook(wb, sales=(300, 310, 320))  # a different workbook saved under the same name
+    code, err = run(capsys, wb, "--out-dir", out, "--quiet")
+    assert code == 0 and "held outputs of a different workbook" in err
+
+    # The earlier outputs, commentary included, were moved unchanged, not overwritten or deleted.
+    archived = [p for p in out.iterdir() if p.is_dir()]
+    assert len(archived) == 1 and archived[0].name.startswith(f"superseded-{first_sha[:12]}-")
+    assert {p.name: p.read_bytes() for p in archived[0].iterdir()} == before
+    # The folder now describes only the new workbook: no commentary carried over.
+    assert sorted(p.name for p in out.iterdir() if p.is_file()) == ["analysis.json", "brief.md", "last_run.json"]
+    analysis, last = load(out), load(out, "last_run.json")
+    assert analysis["source"]["sha256"] == last["sha256"] == sha(wb) != first_sha
+    assert revenue(analysis) == 320.0
+    assert last["superseded_outputs"]["sha256"] == first_sha
+    assert last["superseded_outputs"]["folder"] == archived[0].name
+    assert analysis_id(analysis) != first_id
+
+    # The archived commentary, copied back, is rejected against the new analysis.
+    (out / "commentary.md").write_bytes(before["commentary.md"])
+    code, report = trace(capsys, out)
+    assert code == 4 and f"workbook_sha256 is {first_sha}" in report
+
+
+def test_rerun_of_identical_workbook_keeps_outputs_in_place(tmp_path, capsys):
+    wb, out = workbook(tmp_path / "data" / "Client.xlsx"), tmp_path / "out"
+    assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
+    write_commentary(out)
+    code, err = run(capsys, wb, "--out-dir", out, "--quiet")
+    assert code == 0 and "different workbook" not in err
+    assert not [p for p in out.iterdir() if p.is_dir()]
+    assert load(out, "last_run.json")["superseded_outputs"] is None
+    assert trace(capsys, out)[0] == 0
+
+
+# --- 5. commentary copied from another workbook or analysis is rejected -------------------------
+
+def test_commentary_from_another_workbook_is_rejected(tmp_path, capsys):
+    out_a, out_b = tmp_path / "out_a", tmp_path / "out_b"
+    assert run(capsys, workbook(tmp_path / "A.xlsx", sales=(100, 110, 120)), "--out-dir", out_a, "--quiet")[0] == 0
+    assert run(capsys, workbook(tmp_path / "B.xlsx", sales=(100, 110, 121)), "--out-dir", out_b, "--quiet")[0] == 0
+    write_commentary(out_a)
+    assert trace(capsys, out_a)[0] == 0
+
+    (out_b / "commentary.md").write_bytes((out_a / "commentary.md").read_bytes())
+    code, report = trace(capsys, out_b)
+    assert code == 4
+    assert "workbook_sha256 is" in report and "analysis_id is" in report and "does not match" in report
+
+
+def test_commentary_from_another_analysis_of_the_same_workbook_is_rejected(tmp_path, capsys):
+    # Same workbook bytes, different config: same sha256, different analysis_id.
+    wb = workbook(tmp_path / "A.xlsx")
+    out_a, out_b = tmp_path / "out_a", tmp_path / "out_b"
+    assert run(capsys, wb, "--out-dir", out_a, "--quiet")[0] == 0
+    cfg = config(tmp_path, {"thresholds": {"materiality_abs": 1}})
+    assert run(capsys, wb, "--config", cfg, "--out-dir", out_b, "--quiet")[0] == 0
+    write_commentary(out_a)
+    (out_b / "commentary.md").write_bytes((out_a / "commentary.md").read_bytes())
+    code, report = trace(capsys, out_b)
+    assert code == 4 and "analysis_id is" in report and "workbook_sha256" not in report
+
+
+def test_mixed_folder_brief_from_another_analysis_is_rejected(tmp_path, capsys):
+    out_a, out_b = tmp_path / "out_a", tmp_path / "out_b"
+    assert run(capsys, workbook(tmp_path / "A.xlsx", sales=(100, 110, 120)), "--out-dir", out_a, "--quiet")[0] == 0
+    assert run(capsys, workbook(tmp_path / "B.xlsx", sales=(100, 110, 121)), "--out-dir", out_b, "--quiet")[0] == 0
+    write_commentary(out_a)
+    (out_a / "brief.md").write_bytes((out_b / "brief.md").read_bytes())
+    code, report = trace(capsys, out_a)
+    assert code == 4 and "brief.md does not print the source line of analysis.json" in report
+
+
+def test_last_run_alone_does_not_validate_commentary(tmp_path, capsys):
+    # last_run.json is edited to name the commentary's analysis; analysis.json still decides.
+    out_a, out_b = tmp_path / "out_a", tmp_path / "out_b"
+    assert run(capsys, workbook(tmp_path / "A.xlsx", sales=(100, 110, 120)), "--out-dir", out_a, "--quiet")[0] == 0
+    assert run(capsys, workbook(tmp_path / "B.xlsx", sales=(100, 110, 121)), "--out-dir", out_b, "--quiet")[0] == 0
+    write_commentary(out_a)
+    (out_b / "commentary.md").write_bytes((out_a / "commentary.md").read_bytes())
+    (out_b / "last_run.json").write_bytes((out_a / "last_run.json").read_bytes())
+    code, report = trace(capsys, out_b)
+    assert code == 4 and "analysis_id is" in report and "last_run.json sha256 is" in report
+
+
 # --- 6. company config must match the workbook's company, or be explicitly confirmed ------------
 
 ABC = {"company_name": "ABC Inc"}
@@ -210,6 +305,40 @@ def test_require_config_needs_an_explicit_choice(tmp_path, capsys):
     # --no-config is an explicit choice (onboarding): it runs, and records that no company was checked.
     assert run(capsys, wb, "--require-config", "--no-config", "--out-dir", out, "--quiet")[0] == 0
     assert load(out, "last_run.json")["company_check"]["result"] == "not_checked_no_company_in_config"
+
+
+# --- 7. a failed run never makes earlier outputs look current -----------------------------------
+
+def test_failed_run_makes_existing_commentary_fail_the_check(tmp_path, capsys):
+    # Same bytes: the opex total is 0.5 above its accounts, which a tolerance of 1 accepts and 0.01 does not.
+    wb, out = tmp_path / "Client.xlsx", tmp_path / "out"
+    rows = statement((100, 110, 120))
+    rows[-1] = (0, "Total Operating Expenses", "=SUM({c}14:{c}15)+0.5")
+    make_workbook(wb, MONTHS, rows)
+    loose = config(tmp_path, {"reconciliation_tolerance": 1})
+    assert run(capsys, wb, "--config", loose, "--out-dir", out, "--quiet")[0] == 0
+    write_commentary(out)
+    assert trace(capsys, out)[0] == 0
+
+    assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 2
+    code, report = trace(capsys, out)
+    assert code == 4 and "the latest run failed" in report
+
+
+def test_failed_run_on_different_contents_supersedes_earlier_outputs(tmp_path, capsys):
+    wb, out = workbook(tmp_path / "Client.xlsx"), tmp_path / "out"
+    assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
+    write_commentary(out)
+    rows = statement((100, 110, 120))
+    rows[-1] = (0, "Total Operating Expenses", "=SUM({c}14:{c}15)+5")
+    make_workbook(wb, MONTHS, rows)  # same name, different contents, fails validation
+    code, err = run(capsys, wb, "--out-dir", out, "--quiet")
+    assert code == 2 and "different workbook" in err
+    # Only this run's failed outputs remain at the top level; nothing valid-looking is left there.
+    assert sorted(p.name for p in out.iterdir() if p.is_file()) == [
+        "analysis.failed.json", "brief.failed.md", "last_run.json"]
+    assert load(out, "last_run.json")["stale_earlier_outputs"] == []
+    assert trace(capsys, out)[0] == 1  # no analysis.json / commentary.md to accept
 
 
 # --- 8. normal analysis and commentary validation still pass -----------------------------------

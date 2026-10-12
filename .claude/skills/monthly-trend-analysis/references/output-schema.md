@@ -107,19 +107,22 @@ Each entry in `issues[]` is `{code, severity, message, sheet?, account?, period?
 
 ## Output files
 
+Each output folder holds the analysis of one workbook content. Before writing, a run compares the workbook's SHA-256 with the one the folder's existing outputs record (`analysis.json`, else `analysis.failed.json`, else `last_run.json`). If they differ, or the existing outputs record none, every earlier run file and `commentary*.md` is moved, unchanged, into `superseded-<earlier sha256[:12]>-<UTC time>/` inside the folder, and `last_run.json` names it under `superseded_outputs`. So a different workbook saved under the same file name never shares a folder with the earlier analysis. The rows below describe a folder whose outputs are from the same workbook content.
+
 | Run outcome | Files written to `out/<workbook>/<YYYY-MM>/` |
 |---|---|
 | Exit 0 (`pass`, `pass_with_warnings`) | `analysis.json`, `brief.md`, `last_run.json`. Any `*.failed.*` files from an earlier failed run are removed. If the analysis differs from the `analysis.json` it replaces, an existing `commentary.md` is renamed to `commentary.stale.md` (`-2`, `-3`, … if taken) and named in `last_run.json` as `commentary_set_aside` |
 | Exit 2 (`fail`) | `analysis.failed.json`, `brief.failed.md`, `last_run.json`. Earlier `analysis.json`, `brief.md` and `commentary.md` are left untouched and listed in `last_run.json` as `stale_earlier_outputs` |
 | Exit 1 (unreadable workbook or invalid config) | Nothing |
 
-`last_run.json` is `{status, exit_code, analysis_period, workbook, sha256, analysis_id, run_at, analysis_json, brief, stale_earlier_outputs, commentary_set_aside, commentary_set_aside_source, workbook_path, config, company_check}`.
+`last_run.json` is `{status, exit_code, analysis_period, workbook, sha256, analysis_id, run_at, analysis_json, brief, stale_earlier_outputs, commentary_set_aside, commentary_set_aside_source, workbook_path, config, company_check, superseded_outputs}`.
 
 - `analysis_id` is the SHA-256 of the analysis JSON with sorted keys (`output.analysis_id`). The analysis has no timestamps, so an unchanged analysis keeps the same id. Anyone can recompute it from the saved `analysis.json`.
 - `run_at` is the UTC time of the run. It lives only here, so `analysis.json` stays comparable across runs.
 - `commentary_set_aside_source` is `{analysis_period, workbook_sha256, analysis_id}` from the source line of the commentary this run set aside, or null when it set none aside or the commentary had no source line (its origin is then unknown).
 - `workbook_path` is the absolute path of the workbook analysed; `config` is the `--config` path, or null.
 - `company_check` is `{config_company, workbook_company, confirmed_company, result}`. `result` is `matched_workbook_title` (the workbook's title names the config's `company_name`), `confirmed_by_user` (it did not, and the user confirmed the company with `--confirm-company`), or `not_checked_no_company_in_config` (no config, or one without `company_name`). A mismatch without confirmation stops the run with exit 1.
+- `superseded_outputs` is `{folder, sha256, files}` when this run moved another workbook's outputs aside, else null.
 - Whether a commentary is stale is still decided by comparing the whole saved `analysis.json` with the new result, not by the id.
 
-`brief.md` prints the commentary source line, `Source: analysis <YYYY-MM> · workbook sha256 <hex> · analysis_id <hex>`, near the top. A commentary ends with it, and `python -m financial_analysis.trace <folder>` (exit 4) checks it against the saved analysis.
+`brief.md` prints the commentary source line, `Source: analysis <YYYY-MM> · workbook sha256 <hex> · analysis_id <hex>`, near the top. A commentary ends with it, and `python -m financial_analysis.trace <folder>` (exit 4) checks it against the saved analysis. It also exits 4 when the folder is not one current analysis: `analysis.json` records a failed validation, `brief.md` does not print the source line of `analysis.json`, or `last_run.json` (when present) records a failed latest run or a different period, workbook SHA-256 or `analysis_id`. `last_run.json` can only reject a commentary; acceptance rests on `analysis.json`, from which the `analysis_id` is recomputed.

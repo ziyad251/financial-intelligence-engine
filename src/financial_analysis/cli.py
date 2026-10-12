@@ -14,6 +14,10 @@ listed. A config naming a company is applied only to a workbook whose title name
 company, unless the user confirmed it with --confirm-company. --require-config (used by the
 skill) refuses to run without --config or an explicit --no-config.
 
+Each output folder holds the analysis of one workbook content (sha256). If it already holds
+outputs of a different workbook content, for example a different file saved under the same
+name, they are first moved, unchanged, into DIR/superseded-<their sha256[:12]>-<UTC time>/.
+
 A failed run never overwrites, renames or deletes the outputs of an earlier
 successful run: it writes analysis.failed.json and brief.failed.md instead, so a
 failed result cannot be mistaken for a valid one. A successful run whose analysis
@@ -44,6 +48,7 @@ from .trace import commentary_source
 VALID_FILES = ("analysis.json", "brief.md")
 FAILED_FILES = ("analysis.failed.json", "brief.failed.md")
 EARLIER_OUTPUTS = (*VALID_FILES, "commentary.md")
+RUN_FILES = (*VALID_FILES, *FAILED_FILES, "last_run.json")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -86,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     period = result["periods"]["analysis_period"]
     out_dir = args.out_dir or Path("out") / workbook.stem / period
     out_dir.mkdir(parents=True, exist_ok=True)
+    superseded = _supersede_other_workbook(out_dir, result["source"]["sha256"])
     failed = result["status"] == "fail"
     json_name, brief_name = FAILED_FILES if failed else VALID_FILES
     stale = [name for name in EARLIER_OUTPUTS if failed and (out_dir / name).exists()]
@@ -108,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
                 "analysis_json": json_name, "brief": brief_name, "stale_earlier_outputs": stale,
                 "commentary_set_aside": commentary_set_aside, "commentary_set_aside_source": set_aside_source,
                 "workbook_path": str(workbook.resolve()), "config": str(args.config) if args.config else None,
-                "company_check": company_check}
+                "company_check": company_check, "superseded_outputs": superseded}
     (out_dir / "last_run.json").write_text(json.dumps(last_run, indent=2) + "\n", encoding="utf-8")
 
     if not args.quiet:
@@ -119,6 +125,9 @@ def main(argv: list[str] | None = None) -> int:
         print("VALIDATION FAILED: no commentary may be written from this run."
               + (f" Earlier outputs in {out_dir} ({', '.join(stale)}) were left untouched but do NOT reflect this "
                  "run; treat them as stale." if stale else ""), file=sys.stderr)
+    if superseded:
+        print(f"NOTE: {out_dir} held outputs of a different workbook (sha256 {superseded['sha256'] or 'unknown'}); "
+              f"they were moved unchanged to {superseded['folder']}.", file=sys.stderr)
     if company_check["result"] == "confirmed_by_user":
         print(f"NOTE: company {company_check['config_company']!r} was confirmed by the user, not by the workbook "
               f"(workbook title names {company_check['workbook_company']!r}).", file=sys.stderr)
@@ -126,6 +135,38 @@ def main(argv: list[str] | None = None) -> int:
         print(f"NOTE: the analysis changed since commentary.md was written, so it was renamed to "
               f"{commentary_set_aside}. Write new commentary from this run's brief.", file=sys.stderr)
     return 2 if failed else 0
+
+
+def _recorded_sha256(out_dir: Path) -> str | None:
+    """The workbook sha256 the folder's existing outputs were produced from, or None if none records it."""
+    for name in ("analysis.json", "analysis.failed.json", "last_run.json"):
+        try:
+            data = json.loads((out_dir / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        sha = data.get("sha256") if name == "last_run.json" else data.get("source", {}).get("sha256")
+        if isinstance(sha, str):
+            return sha
+    return None
+
+
+def _supersede_other_workbook(out_dir: Path, sha256: str) -> dict[str, str | None] | None:
+    """If out_dir holds outputs of a different workbook content (or of one it cannot identify), move them,
+    unchanged, into a superseded-<sha12>-<UTC time> subfolder so they cannot be read as this workbook's."""
+    existing = [p for p in out_dir.iterdir() if p.is_file() and
+                (p.name in RUN_FILES or (p.name.startswith("commentary") and p.suffix == ".md"))]
+    previous = _recorded_sha256(out_dir)
+    if not existing or previous == sha256:
+        return None
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    base = f"superseded-{(previous or 'unknown')[:12]}-{stamp}"
+    n = 1
+    while (target := out_dir / (base if n == 1 else f"{base}-{n}")).exists():
+        n += 1
+    target.mkdir()
+    for path in existing:
+        path.rename(target / path.name)
+    return {"folder": target.name, "sha256": previous, "files": sorted(p.name for p in existing)}
 
 
 def _same_analysis(previous: Path, result: dict) -> bool:

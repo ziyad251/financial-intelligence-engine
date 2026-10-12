@@ -51,7 +51,7 @@ The runner works from any directory and needs only `openpyxl` in the environment
 
 `python -m financial_analysis <workbook> [options]` runs the same CLI, but only when the package is importable. Either install it with `pip install -e .` (the Quick start does this), or point `PYTHONPATH` at `src` (PowerShell: `$env:PYTHONPATH = "src"`). Without one of those it fails with `No module named financial_analysis`. Unlike the runner, it writes `out/` relative to the current directory. It also restricts the workbook's location or requires a config only when given `--input-dir DIR` or `--require-config`, which the runner always passes. It checks the company whenever the config has a `company_name`.
 
-Outputs go to `out/<workbook>/<YYYY-MM>/`. Add `--period YYYY-MM` to analyse another month. Exit codes:
+Outputs go to `out/<workbook>/<YYYY-MM>/`. Add `--period YYYY-MM` to analyse another month. A folder only ever holds the analysis of one workbook content (SHA-256). If it holds outputs from a different workbook, for example another file saved under the same name, they are first moved unchanged into `superseded-<sha256 prefix>-<UTC time>/` inside it. Exit codes:
 
 | Exit code | Meaning | Files written |
 |---|---|---|
@@ -77,7 +77,7 @@ All of the arithmetic is done in Python; Claude only interprets the results.
 - **Metrics.** Revenue (by stream), cost of goods sold, gross profit and margin, operating expenses (as presented, by category, and "core" excluding configured non-operating accounts), operating and net income. Each comes with MoM, YoY, TTM and YTD views. Balance-sheet figures are month-end balances and are never summed into TTM.
 - **New companies.** Another company needs a JSON file in `config/companies/`, not a code change. See [company-config.md](.claude/skills/monthly-trend-analysis/references/company-config.md).
 - **Output format.** See [output-schema.md](.claude/skills/monthly-trend-analysis/references/output-schema.md).
-- **Commentary provenance.** Each commentary ends with the source line from `brief.md` (analysis period, workbook SHA-256, `analysis_id`). `python -m financial_analysis.trace <out folder>` checks that line against the saved `analysis.json` and that every number in the commentary appears in the saved outputs.
+- **Commentary provenance.** Each commentary ends with the source line from `brief.md` (analysis period, workbook SHA-256, `analysis_id`). `python -m financial_analysis.trace <out folder>` checks that line against the saved `analysis.json` and that every number in the commentary appears in the saved outputs. It also rejects (exit 4) a folder whose latest run failed, or whose `brief.md`, `analysis.json` and `last_run.json` describe different runs. `last_run.json` alone never makes a commentary pass.
 
 ### Accounting decisions awaiting confirmation (ABC Inc)
 
