@@ -105,6 +105,8 @@ Each entry in `checks[]` is `{check, status: pass|fail|skipped|flagged, descript
 
 Each entry in `issues[]` is `{code, severity, message, sheet?, account?, period?, details?}`. The codes raised by the loader are `missing_value`, `non_numeric_value`, `formula_error`, `formula_unevaluated`, `formula_evaluated`, `missing_period`, `duplicate_period`, `ignored_column`, `unlabelled_row`, `orphan_row`, `group_without_total`, `unmatched_total` and `formula_row_excluded`. `empty_opex_category` (warning) means a configured expense category matched no account and is reported as 0.
 
+- `required_metric_unavailable` (error) is raised when a required amount (`revenue`, `cogs`, `gross_profit`, `opex_total`, `operating_income`, `net_income`, where the section exists) is null for the analysis month. `details: {metrics, causes}` lists the metrics and the cell-level issues (`non_numeric_value`, `missing_value`, `formula_error`, `formula_unevaluated`) for that month. The status is then `fail`. Blank or invalid cells in other months stay warnings.
+
 ## Output files
 
 Each output folder holds the analysis of one workbook content. Before writing, a run compares the workbook's SHA-256 with the one the folder's existing outputs record (`analysis.json`, else `analysis.failed.json`, else `last_run.json`). If they differ, or the existing outputs record none, every earlier run file and `commentary*.md` is moved, unchanged, into `superseded-<earlier sha256[:12]>-<UTC time>/` inside the folder, and `last_run.json` names it under `superseded_outputs`. So a different workbook saved under the same file name never shares a folder with the earlier analysis. The rows below describe a folder whose outputs are from the same workbook content.

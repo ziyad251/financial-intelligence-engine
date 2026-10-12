@@ -58,6 +58,8 @@ If a passing run's analysis differs from the one already saved, an existing `com
 | `0` / `pass_with_warnings` | Continue, but open with the warnings and caveat every figure they affect. |
 | `0` / `pass` | Continue. |
 
+A `fail` includes `required_metric_unavailable`: a headline amount (revenue, COGS, gross profit, operating expenses, operating or net income) cannot be calculated for the analysis month because a required cell is blank or invalid. Report the cells the error names. The same blank or invalid cell in another month is only a warning (those comparisons are `n/a`), so an earlier month can still be analysed with `--period`.
+
 ## Step 3: Read the results
 
 Read all of `brief.md`. Use `analysis.json` only when you need something the brief leaves out, such as one account's monthly history or the `note` explaining why a comparison is missing. Search it for the key you need rather than reading the whole file.

@@ -56,7 +56,7 @@ Outputs go to `out/<workbook>/<YYYY-MM>/`. Add `--period YYYY-MM` to analyse ano
 | Exit code | Meaning | Files written |
 |---|---|---|
 | `0` | Validation passed, possibly with warnings | `analysis.json` (full structured result), `brief.md` (reviewer brief), `last_run.json`. If the figures changed since an existing `commentary.md` was written, that file is renamed to `commentary.stale.md`. `last_run.json` records the run's `analysis_id` (a hash of the analysis) and time, and the set-aside commentary's own source line, or null if it had none |
-| `2` | Validation failed | `analysis.failed.json`, `brief.failed.md`, `last_run.json`. Earlier `analysis.json`, `brief.md` and `commentary.md` are left untouched and listed in `last_run.json` as stale |
+| `2` | Validation failed, including when a headline figure for the analysis month cannot be calculated because a cell is blank or invalid (`required_metric_unavailable`) | `analysis.failed.json`, `brief.failed.md`, `last_run.json`. Earlier `analysis.json`, `brief.md` and `commentary.md` of the same workbook are left untouched, listed in `last_run.json` as stale, and named in `brief.failed.md` as belonging to an earlier run |
 | `1` | No workbook could be chosen safely (none, several, outside `data/`, not Excel), it could not be read, the config is missing or invalid (the message names the key), or the config's company does not match the workbook and was not confirmed | Nothing |
 
 ### Run it as a Skill in Claude Code

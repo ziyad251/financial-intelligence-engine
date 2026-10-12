@@ -17,7 +17,7 @@ from .calculations import (BS_METRIC_INFO, METRIC_INFO, RATIOS, IncomeStatementM
                            build_balance_sheet, build_income_statement)
 from .config import Config
 from .highlights import balance_sheet_highlights, build_highlights, headline_metrics, history_outliers, materiality
-from .issues import ERROR, INFO, WARNING, AnalysisError, overall_status, sort_issues
+from .issues import ERROR, INFO, WARNING, AnalysisError, Issue, overall_status, sort_issues
 from .loader import Series, load_workbook
 from .periods import Period
 from .trends import balance_sheet_view, compare, extremes, full_period_total, mom_series, ttm, ttm_ratio, ytd
@@ -123,6 +123,33 @@ def _limitations(periods: list[Period], model: IncomeStatementModel) -> list[str
     return out
 
 
+# Amounts the analysis month must have. Without any one of them there is no headline to comment on. Ratios
+# are left out: a zero or negative revenue legitimately has no margin (a reason is recorded instead).
+REQUIRED_METRICS = ("revenue", "cogs", "gross_profit", "opex_total", "operating_income", "net_income")
+INPUT_PROBLEMS = ("non_numeric_value", "missing_value", "formula_error", "formula_unevaluated")
+
+
+def _check_required_metrics(model: IncomeStatementModel, target: Period, issues: list[Issue]) -> None:
+    """Error when a required amount cannot be calculated for the analysis month.
+
+    A blank or invalid cell anywhere else stays a warning: it only removes the comparisons that need that
+    month (the documented missing-data policy). In the analysis month it removes the headline figures
+    themselves, so the run must fail rather than pass with warnings. Blank cells count as zero only when the
+    config says so (blank_cells_as_zero), in which case they never reach this check."""
+    missing = [m for m in REQUIRED_METRICS if m in model.metrics and model.metrics[m].get(target) is None]
+    if not missing:
+        return
+    causes = [{"code": i.code, "sheet": i.sheet, "account": i.account, "message": i.message} for i in issues
+              if i.code in INPUT_PROBLEMS and (i.period == target.key or target.key in i.details.get("periods", []))]
+    found = "; ".join(f"'{c['account']}' ({c['code']}: {c['message']})" for c in causes) or "no cell-level cause was found"
+    issues.append(Issue(
+        "required_metric_unavailable", ERROR,
+        f"{', '.join(METRIC_INFO[m][0] for m in missing)} cannot be calculated for {target.label}, the analysis "
+        f"month, because a required input is blank or invalid: {found}. Correct the workbook, or analyse another "
+        "month with --period.",
+        period=target.key, details={"metrics": missing, "causes": causes}))
+
+
 def analyze(workbook: str | Path, config: Config | None = None, period: str | None = None) -> dict[str, Any]:
     config = config or Config.load()
     wb = load_workbook(workbook, config)
@@ -185,6 +212,7 @@ def analyze(workbook: str | Path, config: Config | None = None, period: str | No
             "highlights": balance_sheet_highlights(bs.metrics, BS_METRIC_INFO, target, config),
         }
 
+    _check_required_metrics(model, target, issues)
     sorted_issues = sort_issues(issues)
     status = overall_status(sorted_issues)
     counts = {sev: sum(1 for i in sorted_issues if i.severity == sev) for sev in (ERROR, WARNING, INFO)}

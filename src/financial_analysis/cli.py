@@ -103,6 +103,11 @@ def main(argv: list[str] | None = None) -> int:
         commentary_set_aside = _set_aside(out_dir / "commentary.md")
 
     brief = render_brief(result)
+    if stale:  # a failed run: say in its own brief that the valid-looking files beside it are from an earlier run
+        earlier = _read_json(out_dir / "last_run.json") or {}
+        brief += (f"\n> **Earlier outputs in this folder are not from this run:** {', '.join(stale)} describe an earlier "
+                  f"run (analysis_id {earlier.get('analysis_id', 'unknown')}, run at {earlier.get('run_at', 'unknown')}). "
+                  "Do not use or quote them as current; `last_run.json` lists them under `stale_earlier_outputs`.\n")
     write_json(result, out_dir / json_name)
     (out_dir / brief_name).write_text(brief, encoding="utf-8")
     if not failed:
@@ -135,6 +140,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"NOTE: the analysis changed since commentary.md was written, so it was renamed to "
               f"{commentary_set_aside}. Write new commentary from this run's brief.", file=sys.stderr)
     return 2 if failed else 0
+
+
+def _read_json(path: Path) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _recorded_sha256(out_dir: Path) -> str | None:
