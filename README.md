@@ -18,7 +18,7 @@ This is a build exercise for RE Financial Services: connect QuickBooks Online to
 config/companies/                 Per-company settings: account classes, expense categories
 data/                             Source workbook (read-only input; gitignored, so place it here locally)
 docs/                             Integration decision, security (assignment brief PDF kept locally, not committed)
-integrations/quickbooks/          QuickBooks setup, OAuth, tokens, troubleshooting
+integrations/quickbooks/          Hardened MCP launcher + tests, dependency patch, setup, OAuth, troubleshooting
 src/financial_analysis/           Deterministic pipeline: load → calculate → validate → highlight → output
 tests/                            pytest suite (small hand-built workbooks + the ABC workbook)
 vendor/                           Intuit's QuickBooks MCP server, built locally (gitignored)
@@ -91,11 +91,13 @@ These come from `config/companies/abc-inc.json` or the workbook. Engineering dra
 
 ## How the QuickBooks integration works
 
-Claude Code starts Intuit's open-source MCP server (`vendor/quickbooks-online-mcp-server`, pinned commit) over stdio, as configured in `.mcp.json`:
+Claude Code starts Intuit's open-source MCP server (`vendor/quickbooks-online-mcp-server`, pinned commit, unmodified source) over stdio, through the hardened launcher `integrations/quickbooks/launch.mjs`, as configured in `.mcp.json`:
 
-- Credentials live in `%USERPROFILE%\.secrets\qbo\sandbox.env`, outside the repo.
-- Create, update and delete tools are disabled. The 71 read tools include P&L, balance sheet, trial balance and general ledger.
-- It connects to the sandbox only.
+- Credentials live in `~/.secrets/qbo/sandbox.env` (Windows: `%USERPROFILE%\.secrets\qbo\sandbox.env`), outside the repo. The launcher refuses a token store inside the repository.
+- Create, update and delete **tools** are never registered, enforced by the server's flags and independently by the launcher. The 71 read tools include P&L, balance sheet, trial balance and general ledger. The OAuth grant itself is **not** read-only: Intuit's Accounting scope permits writes.
+- It connects to the sandbox only; the launcher refuses any other environment.
+- Logs are redacted and kept off the protocol channel. Interactive OAuth runs only through the one-time `launch.mjs --auth`, never mid-session.
+- Tests: `cd integrations/quickbooks; npm test` (Node 20+, no network, fake credentials).
 
 Setup, OAuth, token rotation, reconnection and team hosting are covered in [integrations/quickbooks/README.md](integrations/quickbooks/README.md) and [docs/integration-decision.md](docs/integration-decision.md). Credential and data rules are in [docs/security.md](docs/security.md).
 
