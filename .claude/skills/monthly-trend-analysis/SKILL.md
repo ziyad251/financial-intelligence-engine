@@ -54,6 +54,8 @@ If validation fails, the pipeline writes `brief.failed.md` and `analysis.failed.
 
 Read all of `brief.md`. Use `analysis.json` only when you need something the brief leaves out, such as one account's monthly history or the `note` explaining why a comparison is missing. Search it for the key you need rather than reading the whole file.
 
+For how a TTM figure moved over time, use the "TTM trend" section of the brief (`income_statement.ttm` in `analysis.json`). Its rows are twelve-month totals and ratios, one per month-end; the "Monthly trend" table holds the single-month figures.
+
 ## Step 4: Write the analysis
 
 Write roughly 350–600 words in Markdown, using these sections:
@@ -72,6 +74,12 @@ Write roughly 350–600 words in Markdown, using these sections:
 - **Facts and explanations are separate.** State what moved as fact, with figures. Any possible reason must be labelled and framed as something to confirm, for example: "Possible explanation (unconfirmed): …" or "Was this a one-off …?". The only basis for a possible explanation is what the data shows: account names, timing, or a repeat of the same pattern in earlier months (see "Unusual months across the full history"). Never present a cause as fact, and never invent events, customers, contracts or people.
 - **Cover the highlights.** Every headline-metric and margin highlight must be addressed. Line-item highlights may be grouped. If you leave one out, it should be because a larger highlight already explains it.
 - **Core vs as presented.** When the config classifies accounts, lead with the core figures and say once what they exclude. Net income includes those items. For example, Dec 2025 at ABC Inc has a large income-tax benefit inside operating expenses, so mention it whenever net income is compared across that month.
+- **"As presented" follows the workbook.** Whenever you give an operating figure as presented (operating expenses, operating income or operating margin), say that it follows the workbook's own layout and includes the accounts listed in the brief's "As presented" note (for ABC Inc: interest and the income-tax benefit). Do not call such a figure simply "operating" without that qualifier.
+- **Classifications are the config's, not yours.** Describe accounts using the classification the brief and `analysis.json` report, and say it is a configured judgment awaiting accounting-team confirmation where it matters. Never reclassify an account, move it between "core" and "as presented", or rename a category in the commentary. If a classification looks wrong, raise it under "For the reviewer to confirm".
+- **Monthly vs TTM.** Label every figure as a single month or as TTM (twelve months to a month-end), and never let one stand for the other. "Improved each month" about a TTM series describes the rolling total, not the months themselves.
+- **Core operating margin, both views.** Give the monthly core operating margin trend (from the "Monthly trend" table) and the TTM core operating margin trend (from the "TTM trend" table) as separate statements. If they move in different directions, say so.
+- **Describe a TTM series by its path, not just its ends.** Check the "TTM trend" table before writing "rose" or "fell" between two dates. If the series peaked or bottomed in between, say where and what happened after. For example, at ABC Inc for June 2026 the table shows TTM gross profit increasing overall from Dec 2025, peaking in May 2026 and declining in June 2026. Write it that way only when the saved table shows it.
+- **No unsupported causes.** A cause may appear only as a labelled, unconfirmed possibility under the first rule. Do not explain a movement with anything the saved outputs do not show.
 - **Percentages.** Changes in margins are in percentage points, not %. A `*` means the % was calculated against a negative base. For losses, prefer the absolute change ("the loss narrowed by 8,344"). Where the brief shows `n/a (reason)`, give the reason (for example, "up from zero") and never put a % there.
 - **Balance sheet.** These are month-end balances. Never add them up across months or describe them as TTM.
 - **Rounding.** Use the figures exactly as the brief rounds them: whole currency units, and percentages to one decimal place.
@@ -84,7 +92,9 @@ Write roughly 350–600 words in Markdown, using these sections:
 - [ ] No sentence states a cause as fact.
 - [ ] Every headline-metric and margin highlight is covered.
 - [ ] Any warnings or errors are visible at the top.
-- [ ] The core-vs-presented distinction and the limitations are stated.
+- [ ] The core-vs-presented distinction and the limitations are stated, and every "as presented" operating figure says it follows the workbook and includes the configured items.
+- [ ] Every figure is labelled monthly or TTM; the monthly and TTM core operating margin trends are given separately; no TTM series is described by its ends alone when it peaked or bottomed in between.
+- [ ] No account classification or category was changed or reinterpreted.
 
 Save the analysis as `commentary.md` in the same `out/` folder, and show it in the reply.
 

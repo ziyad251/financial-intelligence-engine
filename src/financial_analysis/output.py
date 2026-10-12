@@ -82,6 +82,21 @@ def _highlight_text(h: dict[str, Any]) -> str:
     return f"[{kind}] {h['label']} ({scope}): {body} - {h['profit_effect']}"
 
 
+def _presentation_note(r: dict[str, Any]) -> list[str]:
+    """What "as presented" and "core" mean, from the accounts the config reclassifies. Classifications
+    are reported as configured; nothing here changes them."""
+    moved = [(a["label"], a["classification"]) for a in r["income_statement"]["accounts"]
+             if a.get("classification") in ("non_operating", "income_tax")]
+    if not moved:
+        return []
+    names = "; ".join(f"{label} (configured as {cls})" for label, cls in moved)
+    return ["", f"> **As presented** figures follow the workbook's own layout. Its "
+                f"'{r['income_statement']['sections']['opex']}' section includes: {names}. So operating expenses, "
+                "operating income and operating margin *as presented* include these accounts. **Core** figures exclude "
+                "them. The classification comes from the company config, not from the workbook, and is an accounting "
+                "judgment to be confirmed by the accounting team."]
+
+
 def render_brief(r: dict[str, Any], trend_months: int = 13) -> str:
     period = r["periods"]["analysis_period"]
     prior, ly = r["periods"]["prior_period"], r["periods"]["same_period_last_year"]
@@ -127,12 +142,14 @@ def render_brief(r: dict[str, Any], trend_months: int = 13) -> str:
                      _value(m["yoy"], unit, "prior", "note"), yoy_a, yoy_p,
                      _value(m, unit, "ttm", "ttm_note"), _value(m, unit, "ytd", "ytd_note")])
     lines += _table(["Metric", _label(period), _label(prior), "MoM", "MoM %", _label(ly), "YoY", "YoY %", "TTM", "YTD"], rows)
+    lines += _presentation_note(r)
 
     monthly = r["income_statement"]["monthly"]
     trend_metrics = [m for m in r["income_statement"]["headline_metrics"] if m in monthly]
     margin = "gross_margin" if "gross_margin" in monthly else None
     keys = [k for k in r["periods"]["available"] if k <= period][-trend_months:]
     cols = trend_metrics[:2] + ([margin] if margin else []) + trend_metrics[2:]
+    cols += [m for m in ("core_operating_margin",) if m in monthly and m not in cols]
     lines += ["", f"## Monthly trend (last {len(keys)} months)", ""]
     rows = []
     for k in keys:
@@ -142,6 +159,24 @@ def render_brief(r: dict[str, Any], trend_months: int = 13) -> str:
             row.append(pct(val, note) if monthly[m]["unit"] == "percent" else amt(val))
         rows.append(row)
     lines += _table(["Month"] + [monthly[m]["label"] for m in cols], rows)
+
+    ttm_series = r["income_statement"]["ttm"]
+    ttm_cols = [m for m in ("revenue", "gross_profit", "gross_margin", "core_operating_income", "core_operating_margin")
+                if m in ttm_series and m in monthly]
+    ttm_keys = [k for k in r["periods"]["available"]
+                if k <= period and "revenue" in ttm_series and ttm_series["revenue"]["values"].get(k) is not None]
+    if ttm_keys:
+        lines += ["", "## TTM trend (twelve months to each month)", "",
+                  "Each row is the twelve months ending that month: amounts are 12-month sums and margins are ratios "
+                  "of those sums. These are not monthly figures; the monthly figures are in the table above.", ""]
+        rows = []
+        for k in ttm_keys:
+            row = [_label(k)]
+            for m in ttm_cols:
+                val, note = ttm_series[m]["values"].get(k), ttm_series[m]["notes"].get(k)
+                row.append(pct(val, note) if monthly[m]["unit"] == "percent" else amt(val, note))
+            rows.append(row)
+        lines += _table(["TTM to"] + [f"TTM {monthly[m]['label'].lower()}" for m in ttm_cols], rows)
 
     def line_table(title: str, items: list[dict[str, Any]], share_label: str) -> None:
         nonlocal lines

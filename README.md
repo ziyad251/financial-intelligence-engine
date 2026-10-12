@@ -72,6 +72,16 @@ All of the arithmetic is done in Python; Claude only interprets the results.
 - **New companies.** Another company needs a JSON file in `config/companies/`, not a code change. See [company-config.md](.claude/skills/monthly-trend-analysis/references/company-config.md).
 - **Output format.** See [output-schema.md](.claude/skills/monthly-trend-analysis/references/output-schema.md).
 
+### Accounting decisions awaiting confirmation (ABC Inc)
+
+These come from `config/companies/abc-inc.json` or the workbook. Engineering drafted them; the pipeline reports them as configured and does not change them. They need the accounting team's confirmation before client use:
+
+1. Interest Expense and Interest Income are classed as non-operating, and Income Tax Benefit as income tax, so "core" figures exclude all three. The workbook itself places them in Operating Expenses, so "as presented" operating figures include them.
+2. The category name "Interest & income tax (non-operating)" groups an income-tax item with interest under a non-operating label.
+3. Federal & State Taxes stays an operating expense; the workbook does not say whether it is an income tax.
+4. The workbook places Sales Commission and Referral Fees in Cost of Goods Sold, which affects gross margin.
+5. The operating-expense categories and the highlight materiality thresholds.
+
 ## How the QuickBooks integration works
 
 Claude Code starts Intuit's open-source MCP server (`vendor/quickbooks-online-mcp-server`, pinned commit) over stdio, as configured in `.mcp.json`:
