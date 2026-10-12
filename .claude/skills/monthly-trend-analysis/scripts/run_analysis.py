@@ -8,7 +8,12 @@ it was started with lacks the pipeline's dependencies, it re-runs itself with th
 repository's .venv interpreter.
 
     python <skill dir>/scripts/run_analysis.py "data/<workbook>.xlsx" \
-        --config config/companies/<company>.json [--period YYYY-MM]
+        --config config/companies/<company>.json [--period YYYY-MM] [--confirm-company "<name>"]
+
+It applies the skill's input policy: the workbook must be inside the repository's data/
+folder (--input-dir is fixed to it and cannot be overridden), and a company config must
+be named (--config, or --no-config for an onboarding run). If the workbook path is
+omitted, the only workbook in data/ is used; several stop the run with their names listed.
 """
 
 import importlib.util
@@ -38,6 +43,9 @@ if importlib.util.find_spec("openpyxl") is None:
 sys.path.insert(0, str(REPO_ROOT / "src"))
 # Paths given relative to the caller's directory stay valid after moving to the repo root.
 sys.argv[1:] = [str(Path(a).resolve()) if not a.startswith("-") and Path(a).exists() else a for a in sys.argv[1:]]
+if any(a == "--input-dir" or a.startswith("--input-dir=") for a in sys.argv[1:]):
+    sys.exit("ERROR: the skill only reads workbooks from the repository's data/ folder; --input-dir cannot be set.")
+sys.argv[1:] = [*sys.argv[1:], "--input-dir", str(REPO_ROOT / "data"), "--require-config"]
 os.chdir(REPO_ROOT)
 
 from financial_analysis.cli import main  # noqa: E402

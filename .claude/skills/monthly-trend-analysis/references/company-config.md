@@ -17,7 +17,8 @@ The pipeline needs no account names, only the layout:
 
 | Key | Default | Use |
 |---|---|---|
-| `company_name`, `currency` | null / `USD` | Display only |
+| `company_name` | null | The company this config is for, exactly as the workbook's title names it (punctuation, spacing and case are ignored). The pipeline refuses a workbook whose title names another company, or no company, unless the user confirms with `--confirm-company`. The skill requires it. Never guess it |
+| `currency` | `USD` | Display only |
 | `fiscal_year_start_month` | `1` | Sets the YTD window and the earnings roll-forward reset |
 | `blank_cells_as_zero` | `false` | Set this to true only if the accounting team confirms that blanks mean zero in this export |
 | `reconciliation_tolerance` | `0.01` | The largest difference tolerated in subtotal checks |
@@ -38,10 +39,11 @@ The config is validated before any analysis runs. Unknown keys (at any level, so
 
 ## Onboarding checklist
 
-1. Run the pipeline without `--config` and read the Validation section.
+1. Run the pipeline with `--no-config` and read the Validation section.
 2. If no section or sheet is found, add aliases.
 3. Classify the non-operating and income-tax accounts that the statement presents inside operating expenses.
 4. Add `opex_rollups` until the "Other operating expenses" category is empty or deliberately small.
-5. Re-run until the status is `pass` and every subtotal check passes. Get the classifications and categories signed off.
+5. Set `company_name` to the company named in the workbook's title (confirm it with the user).
+6. Re-run until the status is `pass` and every subtotal check passes. Get the classifications and categories signed off.
 
 Example: `config/companies/abc-inc.json`.

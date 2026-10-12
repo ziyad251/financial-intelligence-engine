@@ -41,9 +41,15 @@ With the supplied workbook in `data/`, the suite runs 88 tests and all pass. Wit
 .venv\Scripts\python.exe .claude/skills/monthly-trend-analysis/scripts/run_analysis.py "data/ABC Inc - Financial Statements (1) (1).xlsx" --config config/companies/abc-inc.json
 ```
 
-This is the supported command. The runner works from any directory and needs only `openpyxl` in the environment, not an installed package: it finds the repository root and puts `src/` on the import path itself.
+This is the supported command. It applies the skill's input rules:
 
-`python -m financial_analysis <workbook> [options]` runs the same CLI, but only when the package is importable. Either install it with `pip install -e .` (the Quick start does this), or point `PYTHONPATH` at `src` (PowerShell: `$env:PYTHONPATH = "src"`). Without one of those it fails with `No module named financial_analysis`. Unlike the runner, it writes `out/` relative to the current directory.
+- **Workbook.** It must be an `.xlsx`/`.xlsm` file inside the repository's `data/` folder. If you omit the path, the only workbook in `data/` is used. If there are several, the run stops and lists them so you can choose one. A listing order is never used to choose.
+- **Config.** `--config` (or `--no-config` for an onboarding run) is required.
+- **Company.** The config's `company_name` must match the company named in the workbook's title. If it does not, or the title names no company, the run stops. Add `--confirm-company "<company_name>"` only after a person has confirmed that the workbook belongs to that company.
+
+The runner works from any directory and needs only `openpyxl` in the environment, not an installed package: it finds the repository root and puts `src/` on the import path itself.
+
+`python -m financial_analysis <workbook> [options]` runs the same CLI, but only when the package is importable. Either install it with `pip install -e .` (the Quick start does this), or point `PYTHONPATH` at `src` (PowerShell: `$env:PYTHONPATH = "src"`). Without one of those it fails with `No module named financial_analysis`. Unlike the runner, it writes `out/` relative to the current directory. It also restricts the workbook's location or requires a config only when given `--input-dir DIR` or `--require-config`, which the runner always passes. It checks the company whenever the config has a `company_name`.
 
 Outputs go to `out/<workbook>/<YYYY-MM>/`. Add `--period YYYY-MM` to analyse another month. Exit codes:
 
@@ -51,7 +57,7 @@ Outputs go to `out/<workbook>/<YYYY-MM>/`. Add `--period YYYY-MM` to analyse ano
 |---|---|---|
 | `0` | Validation passed, possibly with warnings | `analysis.json` (full structured result), `brief.md` (reviewer brief), `last_run.json`. If the figures changed since an existing `commentary.md` was written, that file is renamed to `commentary.stale.md`. `last_run.json` records the run's `analysis_id` (a hash of the analysis) and time, and the set-aside commentary's own source line, or null if it had none |
 | `2` | Validation failed | `analysis.failed.json`, `brief.failed.md`, `last_run.json`. Earlier `analysis.json`, `brief.md` and `commentary.md` are left untouched and listed in `last_run.json` as stale |
-| `1` | The workbook could not be read, or the company config is invalid (the message names the key) | Nothing |
+| `1` | No workbook could be chosen safely (none, several, outside `data/`, not Excel), it could not be read, the config is missing or invalid (the message names the key), or the config's company does not match the workbook and was not confirmed | Nothing |
 
 ### Run it as a Skill in Claude Code
 

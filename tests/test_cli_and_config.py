@@ -52,18 +52,19 @@ def snapshot(folder):
 
 # --- unreadable workbooks: exit 1, one readable line, nothing written --------------------------
 
-@pytest.mark.parametrize("name,content", [
-    ("corrupt.xlsx", b"this is not a zip file"),
-    ("truncated.xlsx", b"PK\x03\x04 truncated"),
-    ("export.csv", b"Account,Jan 2026\nSales,100\n"),
+@pytest.mark.parametrize("name,content,message", [
+    ("corrupt.xlsx", b"this is not a zip file", "Could not open workbook corrupt.xlsx"),
+    ("truncated.xlsx", b"PK\x03\x04 truncated", "Could not open workbook truncated.xlsx"),
+    # Not an Excel file name: refused before any attempt to open it.
+    ("export.csv", b"Account,Jan 2026\nSales,100\n", "Not an Excel workbook: export.csv"),
 ])
-def test_unreadable_workbook_fails_cleanly(tmp_path, capsys, name, content):
+def test_unreadable_workbook_fails_cleanly(tmp_path, capsys, name, content, message):
     wb = tmp_path / name
     wb.write_bytes(content)
     out = tmp_path / "out"
     code, err = run(capsys, wb, "--out-dir", out, "--quiet")
     assert code == 1
-    assert err.startswith(f"ERROR: Could not open workbook {name}")
+    assert err.startswith(f"ERROR: {message}")
     assert "Traceback" not in err
     assert not out.exists()
 

@@ -13,11 +13,15 @@ Python does all of the arithmetic and validation. Your job is to run it, check t
 
 | Input | Default | Notes |
 |---|---|---|
-| Workbook | the `.xlsx` in `data/` | Monthly income statement sheet required; balance sheet optional |
-| Company config | `config/companies/<company>.json` | Optional. Holds account classifications and expense categories. See [references/company-config.md](references/company-config.md) |
+| Workbook | the only `.xlsx`/`.xlsm` in `data/` | Must be inside the repository's `data/` folder (the runner enforces this). Monthly income statement sheet required; balance sheet optional |
+| Company config | none: you must choose | `--config config/companies/<company>.json` for the workbook's company. `--no-config` only for onboarding a new company (see below). See [references/company-config.md](references/company-config.md) |
 | Analysis month | latest month in the workbook | `--period YYYY-MM` |
 
-If several workbooks or configs could apply, ask which ones to use. Do not guess.
+Choosing the inputs:
+
+- **Workbook.** If the user named a workbook, pass that exact path. If not, you may omit the path: the runner uses the only workbook in `data/`, and if there are several it stops (exit 1) and lists them. Then show the user the list and ask which one to use. Never pick one yourself, for example the first one listed. A workbook outside `data/` is refused: ask the user to copy it into `data/`.
+- **Config.** Choose the config whose `company_name` is the workbook's company. A config's file name proves nothing. If no config clearly belongs to this company, or several could, ask the user. The runner refuses to run without `--config` or `--no-config`.
+- **Company identity.** The runner compares the config's `company_name` with the company named in the workbook's title. If they differ, or the title names no company, it stops with exit 1. Do not add `--confirm-company` on your own. Tell the user what the config says and what the workbook says, and ask them to confirm. Only if they confirm, re-run with `--confirm-company "<the config's company_name>"`, and say in the Data notes that the company was confirmed by the user, not by the workbook.
 
 ## Step 1: Run the pipeline
 
@@ -27,7 +31,7 @@ Run this command exactly as shown. It works from any working directory:
 python "${CLAUDE_SKILL_DIR}/scripts/run_analysis.py" "data/<workbook>.xlsx" --config config/companies/<company>.json --quiet
 ```
 
-- Workbook and config paths can be relative to the repository root or to the current directory.
+- Workbook and config paths can be relative to the repository root or to the current directory. The workbook must still be inside `data/`; `--input-dir` cannot be changed.
 - On macOS or Linux, use `python3` if `python` is not available.
 - The runner finds the repository root itself. If the Python you started it with lacks `openpyxl`, it re-runs itself with the repository's `.venv`.
 - If it reports that `openpyxl` is not installed, the environment has not been created yet. Create it from the repository root: `python -m venv .venv`, then `.venv/Scripts/pip install -e .[dev]` on Windows or `.venv/bin/pip install -e .[dev]` on macOS/Linux.
@@ -37,7 +41,7 @@ The pipeline writes these files to `out/<workbook name>/<YYYY-MM>/` under the re
 
 - `brief.md`: every figure you need, already rounded for presentation, plus validation results, assumptions and limitations.
 - `analysis.json`: the full structured result at 2 decimal places. It has the monthly series for every metric, category and account, all comparisons, highlights and issues. Its fields are described in [references/output-schema.md](references/output-schema.md).
-- `last_run.json`: the status of the latest run, which files it wrote, its `analysis_id` (a hash of the analysis content) and its `run_at` time.
+- `last_run.json`: the status of the latest run, which files it wrote, its `analysis_id` (a hash of the analysis content), its `run_at` time, the exact workbook path and config used, and the company check (`company_check.result`).
 
 If validation fails, the pipeline writes `brief.failed.md` and `analysis.failed.json` instead and leaves any earlier `analysis.json`, `brief.md` and `commentary.md` in the folder untouched. Those earlier files then describe a previous run, not this one.
 
@@ -47,7 +51,7 @@ If a passing run's analysis differs from the one already saved, an existing `com
 
 | Exit code / status | What to do |
 |---|---|
-| `1` (could not analyse) | Report the error message. Usually the workbook is unreadable, a sheet or section was not recognised, or the company config is invalid (the message names the key). Nothing was written. Stop. |
+| `1` (could not analyse) | Report the error message. Nothing was written. If it lists several workbooks, ask the user to choose one. If it is a company mismatch, or the workbook names no company, ask the user to confirm the company (see Inputs). If no config was given, choose one or ask. Otherwise the workbook is missing, outside `data/`, not an Excel file or unreadable, a sheet or section was not recognised, or the config is invalid (the message names the key). Stop. |
 | `2` / `fail` | **Do not write commentary.** Read `brief.failed.md` and report each error from its Validation section: what failed, the months affected and the workbook row. Say that any `analysis.json`, `brief.md` or `commentary.md` in the folder is from an earlier run and is stale (`last_run.json` lists them). Ask the reviewer to resolve the errors. |
 | `0` / `pass_with_warnings` | Continue, but open with the warnings and caveat every figure they affect. |
 | `0` / `pass` | Continue. |
@@ -119,8 +123,8 @@ Exit `0` means the source line matches the saved analysis and every number was f
 
 The pipeline locates sections, subtotals and months by structure and by configurable labels. It contains no account names, so a new company needs a config file, not a code change:
 
-1. Run the pipeline with no `--config`. Check the Validation section for `unmapped_accounts`, `group_without_total`, `unmatched_total`, `ignored_column` and failed subtotal checks.
-2. Create `config/companies/<company>.json` with only the keys you need to override: sheet or section aliases, account classes, expense-category rollups and thresholds. See [references/company-config.md](references/company-config.md).
+1. Run the pipeline with `--no-config`. Check the Validation section for `unmapped_accounts`, `group_without_total`, `unmatched_total`, `ignored_column` and failed subtotal checks.
+2. Create `config/companies/<company>.json` with `company_name` set to the company as named in the workbook's title (ask the user if unsure; never invent it), plus only the keys you need to override: sheet or section aliases, account classes, expense-category rollups and thresholds. See [references/company-config.md](references/company-config.md).
 3. Re-run until validation passes and every expense account sits in a sensible category. The accounting team must sign off the classifications and categories.
 
 ## Maintenance
