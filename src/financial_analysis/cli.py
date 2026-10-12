@@ -12,7 +12,10 @@ failed result cannot be mistaken for a valid one. A successful run whose analysi
 differs from the one already in DIR renames an existing commentary.md to
 commentary.stale.md, because that commentary describes the earlier figures.
 DIR/last_run.json always records the outcome of the latest run, and lists any
-earlier outputs that are now stale.
+earlier outputs that are now stale. It also records the run's analysis_id (a hash of the
+analysis content, so it is the same for an unchanged analysis) and when the run happened;
+analysis.json itself stays free of timestamps. A set-aside commentary's own source line is
+copied into last_run.json, or null when it has none: its origin is then unknown.
 """
 
 from __future__ import annotations
@@ -20,12 +23,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Config
 from .issues import AnalysisError
-from .output import render_brief, write_json
+from .output import analysis_id, render_brief, write_json
 from .pipeline import analyze
+from .trace import commentary_source
 
 VALID_FILES = ("analysis.json", "brief.md")
 FAILED_FILES = ("analysis.failed.json", "brief.failed.md")
@@ -57,9 +62,10 @@ def main(argv: list[str] | None = None) -> int:
     json_name, brief_name = FAILED_FILES if failed else VALID_FILES
     stale = [name for name in EARLIER_OUTPUTS if failed and (out_dir / name).exists()]
 
-    commentary_set_aside = None
+    commentary_set_aside = set_aside_source = None
     if not failed and (out_dir / "commentary.md").exists() and not _same_analysis(out_dir / "analysis.json", result):
         # The commentary was written for a different analysis; keep it, but not under the current name.
+        set_aside_source = commentary_source((out_dir / "commentary.md").read_text(encoding="utf-8", errors="replace"))
         commentary_set_aside = _set_aside(out_dir / "commentary.md")
 
     brief = render_brief(result)
@@ -70,8 +76,9 @@ def main(argv: list[str] | None = None) -> int:
             (out_dir / name).unlink(missing_ok=True)
     last_run = {"status": result["status"], "exit_code": 2 if failed else 0, "analysis_period": period,
                 "workbook": result["source"]["workbook"], "sha256": result["source"]["sha256"],
+                "analysis_id": analysis_id(result), "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "analysis_json": json_name, "brief": brief_name, "stale_earlier_outputs": stale,
-                "commentary_set_aside": commentary_set_aside}
+                "commentary_set_aside": commentary_set_aside, "commentary_set_aside_source": set_aside_source}
     (out_dir / "last_run.json").write_text(json.dumps(last_run, indent=2) + "\n", encoding="utf-8")
 
     if not args.quiet:

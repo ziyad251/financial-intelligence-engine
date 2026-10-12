@@ -4,12 +4,15 @@ Every workbook here is a small synthetic file in a temporary directory. Expected
 values are worked out by hand in the comments.
 """
 
+import hashlib
 import json
+from datetime import datetime
 
 import pytest
 
 from financial_analysis.cli import main
 from financial_analysis.config import Config, ConfigError
+from financial_analysis.output import analysis_id, source_line
 from financial_analysis.pipeline import analyze
 
 from helpers import make_workbook
@@ -215,23 +218,58 @@ def test_changed_figures_set_aside_old_commentary(tmp_path, capsys):
     assert (out / "commentary.stale.md").read_text(encoding="utf-8") == "March revenue was 120.\n"
     analysis = json.loads((out / "analysis.json").read_text(encoding="utf-8"))
     assert analysis["income_statement"]["monthly"]["revenue"]["values"]["2026-03"] == 999.0
-    assert json.loads((out / "last_run.json").read_text(encoding="utf-8"))["commentary_set_aside"] == "commentary.stale.md"
+    last = json.loads((out / "last_run.json").read_text(encoding="utf-8"))
+    assert last["commentary_set_aside"] == "commentary.stale.md"
+    # The old commentary has no source line, so its origin is recorded as unknown, not guessed.
+    assert last["commentary_set_aside_source"] is None
 
-    # A second change never overwrites the first set-aside commentary.
-    (out / "commentary.md").write_text("March revenue was 999.\n", encoding="utf-8")
+    # A second change never overwrites the first set-aside commentary. This one carries its source
+    # line, which is copied into last_run.json when it is set aside.
+    analysis_999 = json.loads((out / "analysis.json").read_text(encoding="utf-8"))
+    second = "March revenue was 999.\n\n" + source_line(analysis_999) + "\n"
+    (out / "commentary.md").write_text(second, encoding="utf-8")
     make_workbook(wb, MONTHS, rows(sales=(100, 110, 500)))
     assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
     assert (out / "commentary.stale.md").read_text(encoding="utf-8") == "March revenue was 120.\n"
-    assert (out / "commentary.stale-2.md").read_text(encoding="utf-8") == "March revenue was 999.\n"
+    assert (out / "commentary.stale-2.md").read_text(encoding="utf-8") == second
+    last = json.loads((out / "last_run.json").read_text(encoding="utf-8"))
+    assert last["commentary_set_aside"] == "commentary.stale-2.md"
+    assert last["commentary_set_aside_source"] == {"analysis_period": "2026-03",
+                                                   "workbook_sha256": analysis_999["source"]["sha256"],
+                                                   "analysis_id": analysis_id(analysis_999)}
+    assert last["analysis_id"] != analysis_id(analysis_999)
 
 
 def test_unchanged_rerun_keeps_commentary(tmp_path, capsys):
     wb, out = tmp_path / "Client.xlsx", tmp_path / "out"
     make_workbook(wb, MONTHS, rows())
     assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
+    first_id = json.loads((out / "last_run.json").read_text(encoding="utf-8"))["analysis_id"]
+    first_analysis = (out / "analysis.json").read_bytes()
     (out / "commentary.md").write_text("March revenue was 120.\n", encoding="utf-8")
     code, err = run(capsys, wb, "--out-dir", out, "--quiet")
     assert code == 0 and "renamed" not in err
     assert (out / "commentary.md").read_text(encoding="utf-8") == "March revenue was 120.\n"
     assert not (out / "commentary.stale.md").exists()
-    assert json.loads((out / "last_run.json").read_text(encoding="utf-8"))["commentary_set_aside"] is None
+    last = json.loads((out / "last_run.json").read_text(encoding="utf-8"))
+    assert last["commentary_set_aside"] is None and last["commentary_set_aside_source"] is None
+    # Unchanged analysis: byte-identical analysis.json and the same analysis_id on the rerun.
+    assert (out / "analysis.json").read_bytes() == first_analysis
+    assert last["analysis_id"] == first_id
+
+
+def test_last_run_records_provenance_and_analysis_json_stays_timestamp_free(tmp_path, capsys):
+    out = tmp_path / "out"
+    wb = make_workbook(tmp_path / "Client.xlsx", MONTHS, rows())
+    assert run(capsys, wb, "--out-dir", out, "--quiet")[0] == 0
+    last = json.loads((out / "last_run.json").read_text(encoding="utf-8"))
+    analysis = json.loads((out / "analysis.json").read_text(encoding="utf-8"))
+    # analysis_id is the hash of the saved analysis.json content, so it can be checked from the files alone.
+    assert last["analysis_id"] == analysis_id(analysis) and len(last["analysis_id"]) == 64
+    assert last["sha256"] == analysis["source"]["sha256"] == hashlib.sha256(wb.read_bytes()).hexdigest()
+    assert last["analysis_period"] == analysis["periods"]["analysis_period"] == "2026-03"
+    assert datetime.fromisoformat(last["run_at"]).tzinfo is not None
+    # The run time lives only in last_run.json: analysis.json must stay comparable across runs.
+    assert last["run_at"] not in (out / "analysis.json").read_text(encoding="utf-8")
+    assert "run_at" not in analysis and "analysis_id" not in analysis
+    assert source_line(analysis) in (out / "brief.md").read_text(encoding="utf-8")

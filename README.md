@@ -49,7 +49,7 @@ Outputs go to `out/<workbook>/<YYYY-MM>/`. Add `--period YYYY-MM` to analyse ano
 
 | Exit code | Meaning | Files written |
 |---|---|---|
-| `0` | Validation passed, possibly with warnings | `analysis.json` (full structured result), `brief.md` (reviewer brief), `last_run.json`. If the figures changed since an existing `commentary.md` was written, that file is renamed to `commentary.stale.md` |
+| `0` | Validation passed, possibly with warnings | `analysis.json` (full structured result), `brief.md` (reviewer brief), `last_run.json`. If the figures changed since an existing `commentary.md` was written, that file is renamed to `commentary.stale.md`. `last_run.json` records the run's `analysis_id` (a hash of the analysis) and time, and the set-aside commentary's own source line, or null if it had none |
 | `2` | Validation failed | `analysis.failed.json`, `brief.failed.md`, `last_run.json`. Earlier `analysis.json`, `brief.md` and `commentary.md` are left untouched and listed in `last_run.json` as stale |
 | `1` | The workbook could not be read, or the company config is invalid (the message names the key) | Nothing |
 
@@ -71,6 +71,7 @@ All of the arithmetic is done in Python; Claude only interprets the results.
 - **Metrics.** Revenue (by stream), cost of goods sold, gross profit and margin, operating expenses (as presented, by category, and "core" excluding configured non-operating accounts), operating and net income. Each comes with MoM, YoY, TTM and YTD views. Balance-sheet figures are month-end balances and are never summed into TTM.
 - **New companies.** Another company needs a JSON file in `config/companies/`, not a code change. See [company-config.md](.claude/skills/monthly-trend-analysis/references/company-config.md).
 - **Output format.** See [output-schema.md](.claude/skills/monthly-trend-analysis/references/output-schema.md).
+- **Commentary provenance.** Each commentary ends with the source line from `brief.md` (analysis period, workbook SHA-256, `analysis_id`). `python -m financial_analysis.trace <out folder>` checks that line against the saved `analysis.json` and that every number in the commentary appears in the saved outputs.
 
 ### Accounting decisions awaiting confirmation (ABC Inc)
 

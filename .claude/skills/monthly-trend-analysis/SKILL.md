@@ -7,7 +7,7 @@ description: Produce an owner-facing monthly financial trend analysis (revenue, 
 
 Python does all of the arithmetic and validation. Your job is to run it, check that its output can be trusted, and turn the result into a short analysis that a reviewer can finish and send to the business owner.
 
-**Never calculate financial figures yourself.** Every number in your commentary must come from `brief.md` or `analysis.json`. If a figure you want is not there, say it was not calculated. Do not work it out.
+**Never calculate financial figures yourself.** Every number in your commentary must come from the `brief.md` or `analysis.json` saved in the analysis folder you are writing into. If a figure you want is not there, say it was not calculated. Do not work it out, and do not produce it with extra pipeline runs, scripts or files outside that folder (for example a temporary scratchpad): a figure the saved outputs cannot show is not traceable.
 
 ## Inputs
 
@@ -37,9 +37,11 @@ The pipeline writes these files to `out/<workbook name>/<YYYY-MM>/` under the re
 
 - `brief.md`: every figure you need, already rounded for presentation, plus validation results, assumptions and limitations.
 - `analysis.json`: the full structured result at 2 decimal places. It has the monthly series for every metric, category and account, all comparisons, highlights and issues. Its fields are described in [references/output-schema.md](references/output-schema.md).
-- `last_run.json`: the status of the latest run and which files it wrote.
+- `last_run.json`: the status of the latest run, which files it wrote, its `analysis_id` (a hash of the analysis content) and its `run_at` time.
 
 If validation fails, the pipeline writes `brief.failed.md` and `analysis.failed.json` instead and leaves any earlier `analysis.json`, `brief.md` and `commentary.md` in the folder untouched. Those earlier files then describe a previous run, not this one.
+
+If a passing run's analysis differs from the one already saved, an existing `commentary.md` is renamed `commentary.stale.md` (or `-2`, `-3`, ...). A stale commentary describes an earlier analysis: never present it, or quote from it, as current. `last_run.json` -> `commentary_set_aside_source` holds the source line it carried. When that is `null`, the commentary recorded no source and the analysis it came from is **unknown**: say so, and do not guess or reconstruct it.
 
 ## Step 2: Check the exit code and validation status
 
@@ -97,8 +99,21 @@ Write roughly 350–600 words in Markdown, using these sections:
 - [ ] The core-vs-presented distinction and the limitations are stated, and every "as presented" operating figure says it follows the workbook and includes the configured items.
 - [ ] Every figure is labelled monthly or TTM; the monthly and TTM core operating margin trends are given separately; no TTM series is described by its ends alone when it peaked or bottomed in between.
 - [ ] No account classification or category was changed or reinterpreted.
+- [ ] The last line is the source line copied from the top of `brief.md`.
 
-Save the analysis as `commentary.md` in the same `out/` folder, and show it in the reply.
+Save the analysis as `commentary.md` in the same `out/` folder. Its last line must be the source line printed near the top of `brief.md`, copied exactly:
+
+```
+Source: analysis <YYYY-MM> · workbook sha256 <64 hex characters> · analysis_id <64 hex characters>
+```
+
+It records which analysis the commentary was written from, so a later reader can tell whether it is still current. Then check it mechanically:
+
+```
+python "${CLAUDE_SKILL_DIR}/scripts/check_commentary.py" "out/<workbook name>/<YYYY-MM>"
+```
+
+Exit `0` means the source line matches the saved analysis and every number was found in the saved outputs. Exit `4` means the source line is missing, duplicated or names a different period, workbook or analysis: copy it again from the current `brief.md` (if the analysis changed, rewrite the commentary from the new brief). Exit `3` lists each untraced number: replace it with a figure from the outputs, or say the figure was not calculated, and run the check again. Do not return the analysis until the check passes. The check proves a number came from the outputs, not that it is quoted with the right sign, month or label, so keep the rules above. Then show the analysis in the reply.
 
 ## Using the skill for another company
 

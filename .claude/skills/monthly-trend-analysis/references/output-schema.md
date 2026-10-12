@@ -113,4 +113,11 @@ Each entry in `issues[]` is `{code, severity, message, sheet?, account?, period?
 | Exit 2 (`fail`) | `analysis.failed.json`, `brief.failed.md`, `last_run.json`. Earlier `analysis.json`, `brief.md` and `commentary.md` are left untouched and listed in `last_run.json` as `stale_earlier_outputs` |
 | Exit 1 (unreadable workbook or invalid config) | Nothing |
 
-`last_run.json` is `{status, exit_code, analysis_period, workbook, sha256, analysis_json, brief, stale_earlier_outputs, commentary_set_aside}`.
+`last_run.json` is `{status, exit_code, analysis_period, workbook, sha256, analysis_id, run_at, analysis_json, brief, stale_earlier_outputs, commentary_set_aside, commentary_set_aside_source}`.
+
+- `analysis_id` is the SHA-256 of the analysis JSON with sorted keys (`output.analysis_id`). The analysis has no timestamps, so an unchanged analysis keeps the same id. Anyone can recompute it from the saved `analysis.json`.
+- `run_at` is the UTC time of the run. It lives only here, so `analysis.json` stays comparable across runs.
+- `commentary_set_aside_source` is `{analysis_period, workbook_sha256, analysis_id}` from the source line of the commentary this run set aside, or null when it set none aside or the commentary had no source line (its origin is then unknown).
+- Whether a commentary is stale is still decided by comparing the whole saved `analysis.json` with the new result, not by the id.
+
+`brief.md` prints the commentary source line, `Source: analysis <YYYY-MM> · workbook sha256 <hex> · analysis_id <hex>`, near the top. A commentary ends with it, and `python -m financial_analysis.trace <folder>` (exit 4) checks it against the saved analysis.

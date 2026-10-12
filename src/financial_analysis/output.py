@@ -7,6 +7,7 @@ units, percentages and percentage points to one decimal place.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,19 @@ NOTE_TEXT = {
 
 def write_json(result: dict[str, Any], path: Path) -> None:
     path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def analysis_id(result: dict[str, Any]) -> str:
+    """SHA-256 of the analysis content with sorted keys. The result has no timestamps, so the same
+    workbook, config and period always give the same id, and any change to the analysis changes it."""
+    canonical = json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def source_line(result: dict[str, Any]) -> str:
+    """The provenance line a commentary must carry; trace.py checks it against the saved analysis."""
+    return (f"Source: analysis {result['periods']['analysis_period']} · workbook sha256 {result['source']['sha256']}"
+            f" · analysis_id {analysis_id(result)}")
 
 
 def _label(key: str | None) -> str:
@@ -107,6 +121,8 @@ def render_brief(r: dict[str, Any], trend_months: int = 13) -> str:
         f"Source: `{r['source']['workbook']}` (sha256 {r['source']['sha256'][:12]}), config: "
         f"`{r['config']['source'] or 'defaults'}`. Amounts in {r['currency']}, whole units; "
         "percentages to 1 dp; `*` = % change against a negative base. Full precision in analysis.json.",
+        "",
+        f"Commentary source line (copy it verbatim as the last line of commentary.md): `{source_line(r)}`",
         "",
         "## Validation",
         "",
