@@ -5,8 +5,8 @@ This is a build exercise for RE Financial Services: connect QuickBooks Online to
 | Part | Deliverable | Status |
 |---|---|---|
 | 1. QuickBooks ↔ Claude | Read-only MCP connection to a sandbox company | Working. [Integration README](integrations/quickbooks/README.md), [decision record](docs/integration-decision.md) |
-| 2. Trend-analysis skill | [`.claude/skills/monthly-trend-analysis`](.claude/skills/monthly-trend-analysis/SKILL.md) and its Python pipeline | Working on the supplied workbook; 88 tests (78 run without the workbook, see Quick start) |
-| 3. Eval suite (5+ golden cases) | `evals/` | **Not started.** `evals/golden_cases/` and `evals/fixtures/` are empty |
+| 2. Trend-analysis skill | [`.claude/skills/monthly-trend-analysis`](.claude/skills/monthly-trend-analysis/SKILL.md) and its Python pipeline | Working on the supplied workbook; 163 tests (148 run without the workbook, see Quick start) |
+| 3. Eval suite (5+ golden cases) | [`evals/golden_cases`](evals/golden_cases/README.md) | **Working.** 9 golden cases (258 checks) on synthetic workbooks, graded against hand-calculated expectations; `python evals/golden_cases/run_golden.py` exits 1 on any regression; also run by pytest. Commentary quality is a manual rubric, not automated |
 | 4. One-page architecture note | `docs/architecture.md` | **Not written** |
 
 ## Layout
@@ -33,7 +33,7 @@ python -m venv .venv
 .venv\Scripts\python -m pytest
 ```
 
-With the supplied workbook in `data/`, the suite runs 88 tests and all pass. Without it, as in a fresh clone, 78 pass and 10 are **skipped**: the 10 tests in `tests/test_abc_workbook.py` check the pipeline against the totals Excel cached in that workbook. The workbook is client data and is never committed, so those tests skip themselves when it is absent. Every other test builds small synthetic workbooks in a temporary directory.
+With the supplied workbook in `data/`, the suite runs 163 tests and all pass (10 of them are the golden evaluation suite, see [evals/golden_cases](evals/golden_cases/README.md)). Without it, as in a fresh clone, 148 pass and 15 are **skipped**: the 12 tests in `tests/test_abc_workbook.py` check the pipeline against the totals Excel cached in that workbook, 2 in `tests/test_provenance_safeguards.py` read the supplied workbook and its saved commentary, and 1 in `tests/test_data_reliability.py` checks that it uses Excel's cached values. The workbook is client data and is never committed, so those tests skip themselves when it is absent. Every other test builds small synthetic workbooks in a temporary directory.
 
 ### Run the analysis directly
 
