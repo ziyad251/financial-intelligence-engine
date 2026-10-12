@@ -3,9 +3,8 @@
     "quickbooks": {
       "type": "stdio",
       "command": "node",
-      "args": ["vendor/quickbooks-online-mcp-server/dist/index.js"],
+      "args": ["integrations/quickbooks/launch.mjs"],
       "env": {
-        "QUICKBOOKS_TOKEN_STORE_PATH": "${USERPROFILE}\\.secrets\\qbo\\sandbox.env",
         "QUICKBOOKS_ENVIRONMENT": "sandbox",
         "QUICKBOOKS_DISABLE_WRITE": "true",
         "QUICKBOOKS_DISABLE_UPDATE": "true",

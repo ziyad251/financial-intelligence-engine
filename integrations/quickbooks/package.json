@@ -1,0 +1,12 @@
+{
+  "name": "qbo-mcp-launcher",
+  "private": true,
+  "description": "Hardened launcher and tests for the vendored QuickBooks Online MCP server (no dependencies of its own).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
