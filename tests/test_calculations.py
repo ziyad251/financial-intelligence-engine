@@ -194,7 +194,12 @@ def test_opex_categories_cover_every_account_once(tmp_path):
     assert cats["Facilities"]["values"]["2026-01"] == 200.0
     # Software (70) + Interest Income (-10) are unmatched
     assert cats["Other operating expenses"]["values"]["2026-01"] == 60.0
-    assert "uncategorised_opex" in codes(r, "info")
+    # Each unmatched account is a warning of its own, named, with its values (no longer one info line).
+    flagged = {i["account"]: i for i in r["validation"]["issues"] if i["code"] == "uncategorised_opex"}
+    assert set(flagged) == {"Software", "Interest Income"}
+    assert all(i["severity"] == "warning" for i in flagged.values()) and r["status"] == "pass_with_warnings"
+    assert flagged["Software"]["details"]["values"]["2026-01"] == 70.0
+    assert flagged["Interest Income"]["details"]["values"]["2026-01"] == -10.0
     check = next(c for c in r["validation"]["checks"] if c["check"] == "opex_categories_complete")
     assert check["status"] == "pass"
 

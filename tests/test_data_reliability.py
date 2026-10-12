@@ -130,6 +130,40 @@ def test_blank_counts_as_zero_only_when_configured(tmp_path):
     assert metric(r, "revenue")["value"] == 1200.0                   # 1200 + 0
 
 
+# --- 3. an unexpected expense account --------------------------------------------------------------
+
+def test_unexpected_account_is_a_named_warning_and_is_not_classified(tmp_path):
+    # Core figures are reported only when the config classifies accounts; non_cash is a memo overlay that
+    # does not move anything out of core, so core opex here must equal opex as presented.
+    cfg, _ = config(tmp_path, {"income_statement": {**ROLLUPS["income_statement"],
+                                                    "account_classes": {"non_cash": ["Software"]}}})
+    r = analyze(make_workbook(tmp_path / "u.xlsx", MONTHS, rows(extra_opex=[(1, "Crypto Losses", [0, 0, 25])])), cfg)
+    assert r["status"] == "pass_with_warnings"
+    [w] = issues(r, "uncategorised_opex")
+    assert w["severity"] == "warning" and w["account"] == "Crypto Losses" and "Crypto Losses" in w["message"]
+    assert w["details"]["source_row"] == 17 and w["details"]["path"] == "Operating Expenses > Crypto Losses"
+    assert w["details"]["values"] == {"2026-03": 25.0} and w["details"]["classification"] is None
+    # No classification is invented: the account stays in the totals as presented and in core.
+    account = next(a for a in r["income_statement"]["accounts"] if a["label"] == "Crypto Losses")
+    assert account["classification"] is None and account["category"] == "Other operating expenses"
+    assert metric(r, "opex_total")["value"] == 495.0                 # 400 + 70 + 25
+    assert metric(r, "core_opex")["value"] == 495.0                  # nothing classified non-operating
+    cats = {c["name"]: c["values"]["2026-03"] for c in r["income_statement"]["opex_categories"]}
+    assert cats == {"Facilities": 400.0, "Tools": 70.0, "Other operating expenses": 25.0}
+
+    brief = render_brief(r)
+    section = brief.split("## Accounts needing classification", 1)[1].split("\n## ", 1)[0]
+    assert "| Crypto Losses | 17 | Operating Expenses > Crypto Losses | 25 | 1: Mar 2026 |" in section
+    assert "**unconfirmed**" in section
+
+
+def test_without_category_rules_no_account_is_unexpected(tmp_path):
+    # With no rules there is no list of expected accounts; each group is its own category (documented default).
+    r = analyze(make_workbook(tmp_path / "u.xlsx", MONTHS, rows(extra_opex=[(1, "Crypto Losses", [0, 0, 25])])))
+    assert not issues(r, "uncategorised_opex") and r["status"] == "pass"
+    assert "Accounts needing classification" not in render_brief(r)
+
+
 # --- 4. a legitimate missing month follows the existing warning policy -----------------------------
 
 def test_missing_month_is_still_a_warning(tmp_path):

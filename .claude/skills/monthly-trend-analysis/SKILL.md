@@ -60,6 +60,11 @@ If a passing run's analysis differs from the one already saved, an existing `com
 
 A `fail` includes `required_metric_unavailable`: a headline amount (revenue, COGS, gross profit, operating expenses, operating or net income) cannot be calculated for the analysis month because a required cell is blank or invalid. Report the cells the error names. The same blank or invalid cell in another month is only a warning (those comparisons are `n/a`), so an earlier month can still be analysed with `--period`.
 
+One warning and one note need specific handling:
+
+- `uncategorised_opex` (the brief's "Accounts needing classification" section): an account the config does not recognise. Name each one under "For the reviewer to confirm", with its row and the analysis-month value from that section. Say in the Data notes that it sits in "Other operating expenses" and is counted in core operating expenses until the accounting team classifies it, so the core figures may change. Never guess what the account is or how it should be classified.
+- `formula_evaluated` (info): Excel had not saved the values of some formula cells, so the pipeline recalculated them. Say in the Data notes that those workbook totals were reconciled against recalculated formulas, not Excel's saved results.
+
 ## Step 3: Read the results
 
 Read all of `brief.md`. Use `analysis.json` only when you need something the brief leaves out, such as one account's monthly history or the `note` explaining why a comparison is missing. Search it for the key you need rather than reading the whole file.
@@ -103,7 +108,7 @@ Write roughly 350–600 words in Markdown, using these sections:
 - [ ] Every number appears in `brief.md` or `analysis.json`, at the same rounding.
 - [ ] No sentence states a cause as fact.
 - [ ] Every headline-metric and margin highlight is covered.
-- [ ] Any warnings or errors are visible at the top.
+- [ ] Any warnings or errors are visible at the top, and every account under "Accounts needing classification" is raised for the reviewer.
 - [ ] The core-vs-presented distinction and the limitations are stated, and every "as presented" operating figure says it follows the workbook and includes the configured items.
 - [ ] Every figure is labelled monthly or TTM; the monthly and TTM core operating margin trends are given separately; no TTM series is described by its ends alone when it peaked or bottomed in between.
 - [ ] No account classification or category was changed or reinterpreted.

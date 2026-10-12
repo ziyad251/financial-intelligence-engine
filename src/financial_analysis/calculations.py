@@ -196,7 +196,7 @@ def _assign_categories(lines: list[Line], opex_group: Group | None, config: Conf
     order: list[str] = []
     if rollups:
         other = "Other operating expenses"
-        unmatched = []
+        unmatched: list[Line] = []
         for line in lines:
             for name, patterns in rollups:
                 if any(p.search(line.path) for p in patterns):
@@ -204,7 +204,7 @@ def _assign_categories(lines: list[Line], opex_group: Group | None, config: Conf
                     break
             else:
                 line.category = other
-                unmatched.append(line.label)
+                unmatched.append(line)
         order = [name for name, _ in rollups]
         for name in order:
             if not any(line.category == name for line in lines):
@@ -214,9 +214,19 @@ def _assign_categories(lines: list[Line], opex_group: Group | None, config: Conf
                                     sheet=sheet, account=name))
         if unmatched:
             order.append(other)
-            issues.append(Issue("uncategorised_opex", INFO,
-                                f"{len(unmatched)} operating-expense accounts match no configured category and are "
-                                f"reported under '{other}'", sheet=sheet, details={"accounts": unmatched}))
+        # The config lists the expected expense accounts through its category rules, so an account no rule matches
+        # is unexpected: a reviewer must classify it. It is not blocked, because the totals as presented still
+        # include it and reconcile with the workbook; only its category and its core treatment are unconfirmed.
+        for line in unmatched:
+            valued = {p.key: v for p, v in sorted(line.values.items()) if v is not None and v != 0}
+            issues.append(Issue("uncategorised_opex", WARNING,
+                                f"Unexpected operating-expense account '{line.label}' (row {line.source_row}, "
+                                f"{line.path}) matches no category in the company config. It is reported under "
+                                f"'{other}' and, until it is classified, counted in core operating expenses. "
+                                f"Values in {len(valued)} month(s). The accounting team must classify it in the config.",
+                                sheet=sheet, account=line.label,
+                                details={"path": line.path, "source_row": line.source_row, "category": other,
+                                         "classification": None, "values": valued}))
         return order, True
     # Default: one category per direct child of the operating-expense section.
     child_of: dict[int, str] = {}

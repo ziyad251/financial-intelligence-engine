@@ -111,6 +111,26 @@ def _presentation_note(r: dict[str, Any]) -> list[str]:
                 "judgment to be confirmed by the accounting team."]
 
 
+def _unclassified_section(issues: list[dict[str, Any]], period: str) -> list[str]:
+    """Accounts the config does not recognise, made prominent so a reviewer classifies them before sign-off."""
+    items = [i for i in issues if i["code"] == "uncategorised_opex"]
+    if not items:
+        return []
+    lines = ["", "## Accounts needing classification", "",
+             f"{len(items)} operating-expense account(s) match no category in the company config. They are shown "
+             "under 'Other operating expenses' and counted in core operating expenses until the accounting team "
+             "classifies them. Their category and classification are **unconfirmed**: raise each one with the reviewer.",
+             ""]
+    rows = []
+    for i in items:
+        d = i.get("details", {})
+        values = d.get("values", {})
+        rows.append([str(i.get("account")), str(d.get("source_row")), str(d.get("path")),
+                     amt(values[period]) if period in values else "0 or blank",
+                     f"{len(values)}: {', '.join(_label(p) for p in values) or 'none'}"])
+    return lines + _table(["Account", "Workbook row", "Path", _label(period), "Months with values"], rows)
+
+
 def render_brief(r: dict[str, Any], trend_months: int = 13) -> str:
     period = r["periods"]["analysis_period"]
     prior, ly = r["periods"]["prior_period"], r["periods"]["same_period_last_year"]
@@ -146,6 +166,7 @@ def render_brief(r: dict[str, Any], trend_months: int = 13) -> str:
     passed = [c for c in v["checks"] if c["status"] == "pass"]
     lines.append(f"- Reconciliation checks: {len(passed)} passed, {len(failed)} failed, "
                  f"{sum(1 for c in v['checks'] if c['status'] == 'skipped')} skipped.")
+    lines += _unclassified_section(v["issues"], period)
 
     ap = r["analysis_period"]
     lines += ["", f"## Headline metrics - {_label(period)}", ""]
