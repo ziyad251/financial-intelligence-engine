@@ -242,6 +242,31 @@ def _assign_categories(lines: list[Line], opex_group: Group | None, config: Conf
     return order, False
 
 
+def _report_unmapped(unmapped: list[Row], sheet: str, issues: list[Issue]) -> None:
+    """Accounts outside every recognised section are left out of every metric. If any of them carries an
+    amount, revenue, costs or profit would be misstated without the run saying so, so that is an error (fail
+    closed): the section must be mapped in the company config, or the workbook corrected. Accounts that are
+    blank or zero in every month change no figure and stay a warning."""
+    with_amounts = [{"account": r.path_label, "source_row": r.sheet_row,
+                     "values": {p.key: v for p, v in sorted(r.values.items()) if v is not None and v != 0}}
+                    for r in unmapped]
+    with_amounts = [a for a in with_amounts if a["values"]]
+    details = {"accounts": [r.path_label for r in unmapped], "accounts_with_amounts": with_amounts}
+    if with_amounts:
+        issues.append(Issue("unmapped_accounts", ERROR,
+                            f"{len(with_amounts)} account(s) with amounts are outside every recognised section, so "
+                            f"they are left out of revenue, costs and profit: "
+                            f"{'; '.join(a['account'] + ' (row ' + str(a['source_row']) + ')' for a in with_amounts)}. "
+                            "Add the section's label to income_statement.sections in the company config (for example "
+                            "under opex or other_expense), or correct the workbook, then re-run.",
+                            sheet=sheet, details=details))
+    else:
+        issues.append(Issue("unmapped_accounts", WARNING,
+                            f"{len(unmapped)} accounts are outside every recognised section and are excluded from the "
+                            "metrics; they are blank or zero in every month, so no figure changes",
+                            sheet=sheet, details=details))
+
+
 def build_income_statement(stmt: Statement, config: Config, issues: list[Issue]) -> IncomeStatementModel:
     periods = stmt.periods
     groups = _section_groups(stmt, config, issues)
@@ -272,9 +297,7 @@ def build_income_statement(stmt: Statement, config: Config, issues: list[Issue])
 
     unmapped = [r for r in stmt.leaves() if r.sheet_row not in seen_rows]
     if unmapped:
-        issues.append(Issue("unmapped_accounts", WARNING,
-                            f"{len(unmapped)} accounts are outside every recognised section and are excluded from the metrics",
-                            sheet=stmt.sheet, details={"accounts": [r.path_label for r in unmapped]}))
+        _report_unmapped(unmapped, stmt.sheet, issues)
     for section in ("cogs", "opex"):
         if groups[section] is None:
             issues.append(Issue(f"{section}_section_missing", WARNING,

@@ -207,5 +207,19 @@ def subtotal_mismatch(path: Path) -> Path:
     return write_workbook(path, JAN_MAR_2026, rows)
 
 
+def unrecognised_section(path: Path) -> Path:
+    """Case 10: an 'Overheads' section that no default section alias recognises. Consulting Fees (row 17)
+    carries amounts in every month; Office Supplies (row 18) is zero throughout. No derived rows, so no
+    reported Net Income line would catch the omission by reconciliation."""
+    rows = _simple([1000, 1100, 1200], JAN_MAR_2026, materials=[300, 330, 360])
+    return write_workbook(path, JAN_MAR_2026, rows + [
+        (0, "Overheads", None),                                     # 16
+        (1, "Consulting Fees", [100, 100, 150]),                    # 17
+        (1, "Office Supplies", [0, 0, 0]),                          # 18
+        (0, "Total Overheads", "=SUM({c}17:{c}18)"),                # 19
+    ])
+
+
 FIXTURES = {f.__name__: f for f in (normal_month, mom_ttm, missing_month, duplicate_period, unmapped_account,
-                                    duplicates_and_subtotals, invalid_required_value, formula_cache, subtotal_mismatch)}
+                                    duplicates_and_subtotals, invalid_required_value, formula_cache, subtotal_mismatch,
+                                    unrecognised_section)}

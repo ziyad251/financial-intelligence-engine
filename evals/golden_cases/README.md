@@ -1,6 +1,6 @@
 # Golden evaluation suite
 
-Nine golden cases. Each pairs a small synthetic workbook (a *data state*) with the analysis output the engine must produce for it. The suite runs the **real CLI** (`python -m financial_analysis`), exactly as a user would, and grades the files it writes against expected values worked out **by hand**. It never imports or calls the engine's calculation code.
+Ten golden cases. Each pairs a small synthetic workbook (a *data state*) with the analysis output the engine must produce for it. The suite runs the **real CLI** (`python -m financial_analysis`), exactly as a user would, and grades the files it writes against expected values worked out **by hand**. It never imports or calls the engine's calculation code.
 
 ## Run it
 
@@ -17,7 +17,7 @@ Example result (2026-10-12):
 ```
 PASS  01_normal_month               43 checks  ...
 ...
-9 cases: 9 passed, 0 failed; 258 checks, 0 failed
+10 cases: 10 passed, 0 failed; 281 checks, 0 failed
 ```
 
 ## Files
@@ -44,6 +44,7 @@ The fictional company is "Golden Test Co"; all figures are synthetic.
 | `07_invalid_required_value` | Text "n/a" in Product Sales for March (F8) | Step 1, `--period 2026-02`: passes with a `non_numeric_value` warning naming F8; Feb revenue 1,310, GP 980. Commentary written and accepted (trace exit 0). Step 2, March: `required_metric_unavailable` **error** (revenue, GP, operating and net income; cause: Product Sales), exit 2, revenue null (never a partial sum). The step 1 `analysis.json`, `brief.md` and `commentary.md` are byte-identical; `brief.failed.md` says they are from an earlier run; `last_run.json` lists them as stale; trace exits 4 |
 | `08_formula_cache` | No cached formula values (as openpyxl writes them); "Insurance" is `=40+5` | Exactly 4 `formula_evaluated` infos, one per row (not per cell), each with row, kind (`subtotal` or `leaf`), cells and periods. `recalculated_periods` on the reported totals; recalculated values equal the hand sums; Insurance 45 feeds opex 445; the brief says the values are "not figures Excel reported" and names each row once |
 | `09_subtotal_mismatch` | Hard-coded "Total Income" 1,250 in March against an account of 1,200 | `subtotal_mismatch` **error** with reported 1,250 and calculated 1,200 for March only; exit 2; revenue taken from the account (1,200), not the reported total |
+| `10_unrecognised_section` | An "Overheads" section no section alias recognises: Consulting Fees (row 17: 100, 100, 150) and Office Supplies (all 0); no derived rows to reconcile against | `unmapped_accounts` **error** listing both accounts and, under `accounts_with_amounts`, only Consulting Fees with its row and amounts; exit 2; failed outputs only, brief says "Do not write commentary". The failed analysis shows why: operating income 640 (1,200 − 360 − 200) against a true 490. Before the fix this run passed with a warning (exit 0) |
 
 Cases 03 and 04 use different fixtures (`missing_month` and `duplicate_period`), and the suite asserts that they stay different.
 
@@ -93,6 +94,7 @@ On 2026-10-12 each of these deliberate engine faults was injected into a scratch
 | Unexpected account downgraded to info | 05 (3 checks) |
 | Required-metric check removed | 07 (exit code, step 2) |
 | `last_run.json` not updated by failed runs (stale state) | 04, 07, 09 (freshness guard) |
+| The engine before the fail-closed fix for unrecognised sections (HEAD `afb911d`, run 2026-10-12) | 10 (exit code: 0 instead of 2) |
 
 A wrong expected value is caught too (the example above).
 
@@ -108,7 +110,7 @@ New behaviour gets a new case: add a generator to `fixtures.py` (register it in 
 
 ## Limitations
 
-- **Commentary quality is not graded automatically.** The suite checks only that commentary is accepted or rejected according to provenance (case 07, `trace_exit`). It does not check the prose. Use the rubric below.
+- **Commentary quality is not graded here.** The golden suite checks only that commentary is accepted or rejected according to provenance (case 07, `trace_exit`). The claim checks (misattributed or contradicted figures, forecasts, unsupported causes) have their own good and bad examples in `tests/test_commentary_claims.py`. Neither judges the prose as a whole: use the rubric below.
 - **Excel-cached values are not covered here.** openpyxl cannot write cached formula results, so every fixture exercises the recalculation path. The cached-value path is covered by `tests/test_abc_workbook.py` and `tests/test_data_reliability.py` against the supplied workbook, when it is present.
 - **One layout family.** The fixtures follow the supplied QuickBooks-style layout (income statement only). Balance-sheet behaviour, other layouts and section aliases are covered by unit tests, not golden cases.
 - **The company mismatch check is not a golden case.** It stops the run before any output is written; `tests/test_provenance_safeguards.py` covers it.
@@ -118,7 +120,7 @@ New behaviour gets a new case: add a generator to `fixtures.py` (register it in 
 
 Score each item pass/fail when reviewing a `commentary.md` written by the skill. Any fail means the commentary is not sent.
 
-1. **Numerical consistency.** Every figure appears in that folder's `brief.md` / `analysis.json` at the same rounding, with the right sign, month and label (monthly vs TTM). `python -m financial_analysis.trace <folder>` must exit 0 first; it checks presence, not meaning.
+1. **Numerical consistency.** Every figure appears in that folder's `brief.md` / `analysis.json` at the same rounding, with the right sign, month and label (monthly vs TTM). `python -m financial_analysis.trace <folder>` must exit 0 first. It checks each figure against what its sentence names, plus sign, direction and profit/loss wording. It does not catch a wrong claim without a number, or one whose sentence names nothing it recognises.
 2. **Trends correctly identified.** Directions match the data (up/down, MoM vs YoY vs TTM), a TTM series is described by its path, not just its ends, and margin moves are in percentage points.
 3. **No unsupported causes.** Any explanation is labelled as unconfirmed and framed as a question for the reviewer. No events, customers or contracts are invented.
 4. **No fabricated figures.** No number appears that the pipeline did not calculate (e.g. a forecast or a self-computed total).

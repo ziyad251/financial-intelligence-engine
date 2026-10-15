@@ -1,0 +1,36 @@
+{
+  "id": "10_unrecognised_section",
+  "title": "Unrecognised 'Overheads' section with amounts: error, exit 2, never left out of profit silently",
+  "fixture": "unrecognised_section",
+  "config": null,
+  "steps": [
+    {
+      "exit_code": 2,
+      "trace_exit": 1,
+      "checks": [
+        {"type": "status", "value": "fail"},
+        {"type": "issue_codes", "severity": "error", "equals": ["unmapped_accounts"]},
+        {"type": "issue_codes", "severity": "warning", "equals": []},
+        {"type": "issue", "match": {"code": "unmapped_accounts", "severity": "error"},
+         "details": {
+           "accounts": ["Overheads > Consulting Fees", "Overheads > Office Supplies"],
+           "accounts_with_amounts": [{"account": "Overheads > Consulting Fees", "source_row": 17,
+                                      "values": {"2026-01": 100, "2026-02": 100, "2026-03": 150}}]
+         },
+         "message_contains": ["Overheads > Consulting Fees", "income_statement.sections"]},
+
+        {"type": "approx", "path": "income_statement.monthly.revenue.values.2026-03", "value": 1200, "calc": "Product Sales"},
+        {"type": "approx", "path": "income_statement.monthly.opex_total.values.2026-03", "value": 200,
+         "calc": "Rent only: the Overheads section is not part of operating expenses, which is why the run must fail"},
+        {"type": "approx", "path": "income_statement.monthly.operating_income.values.2026-03", "value": 640,
+         "calc": "1,200 - 360 - 200; the true result including Consulting Fees 150 would be 490, so 640 overstates it"},
+
+        {"type": "files", "equals": ["analysis.failed.json", "brief.failed.md", "last_run.json"]},
+        {"type": "file_contains", "file": "brief.failed.md",
+         "text": ["**Status: FAIL**", "Do not write commentary", "unmapped_accounts", "Overheads > Consulting Fees"]},
+        {"type": "equals", "in": "last_run", "path": "status", "value": "fail"},
+        {"type": "equals", "in": "last_run", "path": "analysis_json", "value": "analysis.failed.json"}
+      ]
+    }
+  ]
+}

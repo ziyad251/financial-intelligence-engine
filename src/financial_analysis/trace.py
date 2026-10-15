@@ -1,11 +1,14 @@
-"""Check that every number in a commentary appears in the saved analysis outputs.
+"""Check a commentary against the saved analysis outputs: its provenance and its financial claims.
 
     python -m financial_analysis.trace <out folder>    (reads commentary.md, analysis.json, brief.md)
 
-A number is traced when it matches, ignoring its sign and thousands separators, a value
-in analysis.json at presentation rounding (whole units, 1 dp or 2 dp) or a number printed
-in brief.md. Headings, years (e.g. 2026), ISO month keys (2026-06) and single digits (list
-numbering) are ignored.
+Content (claims.py has the details). Each sentence that names a metric, account, expense category or
+balance-sheet figure has its numbers checked against that item's figures in analysis.json: the
+right item, a month the sentence names or the analysis month, the written precision and unit, the
+sign, the direction words and profit/loss wording. Numbers in forward-looking sentences, and causes
+stated as fact without a figure from the analysis, are reported. A number in a sentence that names
+nothing measurable must be printed in brief.md. Headings, years (e.g. 2026), ISO month keys
+(2026-06), list numbering and, in sentences that name nothing, single digits are ignored.
 
 The commentary must also end with the source line printed in brief.md:
     Source: analysis <YYYY-MM> · workbook sha256 <64 hex> · analysis_id <64 hex>
@@ -13,17 +16,18 @@ and every value in it must match the saved analysis.json (its period, its workbo
 the analysis_id computed from it). The digits in that line are not checked as figures.
 
 The folder itself must be consistent: brief.md must print the same source line as
-analysis.json (so the numbers are traced against one analysis), and when last_run.json
+analysis.json (so the numbers are checked against one analysis), and when last_run.json
 exists the latest run must not have failed and must describe that same analysis (period,
 workbook sha256, analysis_id). last_run.json can only reject: the commentary is accepted on
 the strength of analysis.json, from which the analysis_id is recomputed.
 
-Exit codes: 0 = source line matches and every number traced, 4 = source line missing or
-not matching the saved analysis, or the folder's outputs are stale or inconsistent (listed),
-3 = untraced numbers found (listed), 1 = an input file is missing or unreadable.
+Exit codes: 0 = source line matches and no finding, 4 = source line missing or not matching
+the saved analysis, or the folder's outputs are stale or inconsistent (listed), 3 = content
+findings (listed: UNTRACED, MISATTRIBUTED, CONTRADICTS, FORECAST, UNSUPPORTED_CAUSE),
+1 = an input file is missing or unreadable.
 
-This proves a figure came from the outputs, not that it is used correctly: a number
-quoted with the wrong sign, month or label still traces.
+This is a guard, not a proof: it reads a fixed vocabulary, so a wrong claim without a number, or
+with no recognisable name in its sentence, can still pass. The reviewer remains the final check.
 """
 
 from __future__ import annotations
@@ -35,51 +39,22 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .claims import Finding, check_claims
 from .output import analysis_id, source_line
 
-NUMBER = re.compile(r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?")
-ISO_MONTH = re.compile(r"\b\d{4}-\d{2}(?:-\d{2})?\b")
-IGNORED = re.compile(r"(19|20)\d\d|\d")  # years and single digits
-HASH = re.compile(r"\b[0-9a-f]{64}\b")  # workbook sha256 and analysis_id: identifiers, not figures
 SOURCE = re.compile(r"^Source: analysis (\d{4}-\d{2}) · workbook sha256 ([0-9a-f]{64}) · analysis_id ([0-9a-f]{64})[ \t]*$",
                     re.MULTILINE)
 
 
-def _canonical(token: str) -> str:
-    return token.lstrip("+-").replace(",", "")
-
-
-def known_numbers(analysis: Any, brief: str) -> set[str]:
-    known = {_canonical(t) for t in NUMBER.findall(ISO_MONTH.sub(" ", HASH.sub(" ", brief)))}
-
-    def walk(value: Any) -> None:
-        if isinstance(value, bool):
-            return
-        if isinstance(value, (int, float)):
-            for fmt in ("{:.0f}", "{:.1f}", "{:.2f}"):
-                known.add(fmt.format(abs(value)))
-        elif isinstance(value, dict):
-            for v in value.values():
-                walk(v)
-        elif isinstance(value, list):
-            for v in value:
-                walk(v)
-
-    walk(analysis)
-    return known
+def content_findings(commentary: str, analysis: Any, brief: str) -> list[Finding]:
+    """Every content problem in the commentary (see claims.py)."""
+    return check_claims(commentary, analysis, brief)
 
 
 def untraced_numbers(commentary: str, analysis: Any, brief: str) -> list[tuple[str, str]]:
-    """(number as written, surrounding text) for every number not found in the outputs."""
-    body = ISO_MONTH.sub(" ", HASH.sub(" ", re.sub(r"^#.*$", "", commentary, flags=re.MULTILINE)))
-    known = known_numbers(analysis, brief)
-    found = []
-    for m in NUMBER.finditer(body):
-        token = _canonical(m.group())
-        if token in known or IGNORED.fullmatch(token):
-            continue
-        found.append((m.group(), body[max(0, m.start() - 50): m.end() + 20].replace("\n", " ").strip()))
-    return found
+    """(number as written, its sentence) for every number in a sentence that names nothing measurable and
+    is not printed in brief.md. The other findings come from content_findings."""
+    return [(f.token, f.context) for f in check_claims(commentary, analysis, brief) if f.kind == "untraced"]
 
 
 def commentary_source(commentary: str) -> dict[str, str] | None:
@@ -147,12 +122,14 @@ def main(argv: list[str] | None = None) -> int:
     problems = source_problems(commentary, analysis) + folder_problems(analysis, brief, last_run)
     for problem in problems:
         print(f"SOURCE {problem}")
-    found = untraced_numbers(commentary, analysis, brief)
-    for token, context in found:
-        print(f"UNTRACED {token}: ...{context}...")
+    findings = content_findings(commentary, analysis, brief)
+    for f in findings:
+        print(f"{f.kind.upper()} {f.token}: {f.reason}. In: \"{f.context}\"")
+    untraced = sum(f.kind == "untraced" for f in findings)
     print(f"{commentary_path.name}: source line {'does not match' if problems else 'matches'} the current saved analysis; "
-          f"{len(found)} untraced number(s) against analysis.json and brief.md in {args.folder}")
-    return 4 if problems else 3 if found else 0
+          f"{untraced} untraced number(s), {len(findings) - untraced} claim finding(s) against analysis.json and "
+          f"brief.md in {args.folder}")
+    return 4 if problems else 3 if findings else 0
 
 
 if __name__ == "__main__":

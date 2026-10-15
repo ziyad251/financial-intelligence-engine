@@ -1,5 +1,5 @@
 """Check commentary.md against the saved analysis outputs: its source line must name the saved
-analysis, and every number in it must appear in analysis.json or brief.md.
+analysis, and its financial claims must agree with analysis.json (see financial_analysis/claims.py).
 
 Thin wrapper around `python -m financial_analysis.trace` that works from any working
 directory. The output folder can be given relative to the current directory or to the
@@ -7,8 +7,9 @@ repository root. It needs only the standard library, so no virtual environment.
 
     python <skill dir>/scripts/check_commentary.py "out/<workbook>/<YYYY-MM>"
 
-Exit codes: 0 = source line matches and every number traced, 4 = source line missing or not
-matching the saved analysis, 3 = untraced numbers (listed), 1 = files missing.
+Exit codes: 0 = source line matches and no finding, 4 = source line missing or not matching the
+saved analysis (or the folder's outputs are stale), 3 = content findings (listed: UNTRACED,
+MISATTRIBUTED, CONTRADICTS, FORECAST, UNSUPPORTED_CAUSE), 1 = files missing.
 """
 
 import sys

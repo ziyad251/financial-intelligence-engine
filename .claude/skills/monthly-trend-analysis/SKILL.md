@@ -7,6 +7,8 @@ description: Produce an owner-facing monthly financial trend analysis (revenue, 
 
 Python does all of the arithmetic and validation. Your job is to run it, check that its output can be trusted, and turn the result into a short analysis that a reviewer can finish and send to the business owner.
 
+These instructions apply unchanged to any company. Everything company-specific (the company name, sheet and section labels, account classifications, expense categories, materiality thresholds, currency) lives in the company config and reaches you through the brief. Never carry a fact, account name or pattern over from another company's analysis.
+
 **Never calculate financial figures yourself.** Every number in your commentary must come from the `brief.md` or `analysis.json` saved in the analysis folder you are writing into. If a figure you want is not there, say it was not calculated. Do not work it out, and do not produce it with extra pipeline runs, scripts or files outside that folder (for example a temporary scratchpad): a figure the saved outputs cannot show is not traceable.
 
 ## Inputs
@@ -60,57 +62,82 @@ If a passing run's analysis differs from the one already saved, an existing `com
 
 A `fail` includes `required_metric_unavailable`: a headline amount (revenue, COGS, gross profit, operating expenses, operating or net income) cannot be calculated for the analysis month because a required cell is blank or invalid. Report the cells the error names. The same blank or invalid cell in another month is only a warning (those comparisons are `n/a`), so an earlier month can still be analysed with `--period`.
 
-One warning and one note need specific handling:
+A `fail` also includes `unmapped_accounts` as an error: accounts with amounts sit in a section the config does not recognise, so no metric includes them. Report each account, its row and its amounts from the error. Do not guess which section it belongs to; the config's `income_statement.sections` must be updated (an accounting decision) or the workbook corrected.
 
-- `uncategorised_opex` (the brief's "Accounts needing classification" section): an account the config does not recognise. Name each one under "For the reviewer to confirm", with its row and the analysis-month value from that section. Say in the Data notes that it sits in "Other operating expenses" and is counted in core operating expenses until the accounting team classifies it, so the core figures may change. Never guess what the account is or how it should be classified.
+Some issues need specific handling in the commentary. Report each from the brief's own wording; never fill in or reinterpret what it describes:
+
+- `uncategorised_opex` (the brief's "Accounts needing classification" section): an account the config does not recognise. List each one in the Data notes for the reviewer, with its row and the analysis-month value from that section. Say that it sits in "Other operating expenses" and is counted in core operating expenses until the accounting team classifies it, so the core figures may change. Never guess what the account is or how it should be classified.
+- `config_account_not_found`, `classification_not_applied`, `empty_opex_category`: the config names an account or category that the workbook does not match, so the core figures or a category may not exclude or contain what the config intends. List each in the Data notes for the reviewer.
+- `missing_value`, `non_numeric_value`, `formula_error`, `missing_period`: a month or cell has no usable value. Every comparison, TTM figure or total that depends on it is `n/a` in the brief. Say which months are affected and do not fill the gap.
 - `formula_evaluated` (info): Excel had not saved the values of some formula cells, so the pipeline recalculated them. Say in the Data notes that those workbook totals were reconciled against recalculated formulas, not Excel's saved results.
 
 ## Step 3: Read the results
 
 Read all of `brief.md`. Use `analysis.json` only when you need something the brief leaves out, such as one account's monthly history or the `note` explaining why a comparison is missing. Search it for the key you need rather than reading the whole file.
 
-For questions about the whole period rather than one month (total revenue, the highest- or lowest-revenue month, the largest month-over-month moves), use the "Revenue by month, full period" section of the brief, or `income_statement.revenue_history` in `analysis.json`. They hold the full-period total, every month's revenue with its prior month and MoM change, the largest MoM increase and decrease, and the highest and lowest month (`highest_month`, `lowest_month`; ties go to the earliest month). If the total is `n/a`, a month is missing or blank, and no total exists. If `extremes_note` is set (the brief says "extremes incomplete"), the highest and lowest month cover only the months with a value: say so. Never pick the highest or lowest month yourself from a table.
+**Note what this analysis contains before you write.** The brief prints only what the workbook and config support:
 
-For how a TTM figure moved over time, use the "TTM trend" section of the brief (`income_statement.ttm` in `analysis.json`). Its rows are twelve-month totals and ratios, one per month-end; the "Monthly trend" table holds the single-month figures.
+| If the brief... | Then |
+|---|---|
+| has no core rows (no classification configured) | Use the operating figures as presented, omit every "core" statement, and say in the Data notes, as the Assumptions do, that they may include non-operating items |
+| has core rows but no "As presented" note (the Assumptions list the core exclusions as "none found") | Core and as-presented figures are the same: call them operating figures, and say in the Data notes that the config's classified accounts were not found, so nothing is excluded |
+| shows TTM as `n/a (<12 months)`, or its Limitations say there are no TTM figures | Say once that TTM figures are not available and why. Omit TTM statements |
+| shows a TTM figure as `n/a (missing input)` | Say that the twelve months to that month include a missing value, so that TTM figure does not exist |
+| shows YoY as `n/a (no data)` | Say that the same month last year is not in the workbook |
+| shows a margin as `n/a (zero revenue)` or `n/a (negative revenue)` | Give that reason, never a margin |
+| has no "Balance sheet" section | Omit the cash and balance-sheet findings and say the workbook has no balance sheet |
+| says "No movements met the materiality thresholds" | Say so, and do not single out any movement as significant |
+
+For questions about the whole period rather than one month (total revenue, the highest- or lowest-revenue month, the largest month-over-month moves), use the "Revenue by month, full period" section of the brief, or `income_statement.revenue_history` in `analysis.json`. If the total is `n/a`, a month is missing or blank and no total exists. If the brief says "extremes incomplete", the highest and lowest month cover only the months with a value: say so.
+
+For how a TTM figure moved over time, use the "TTM trend" section. Its rows are twelve-month totals and ratios, one per month-end; the "Monthly trend" section holds the single-month figures.
+
+**Read, never calculate.** You may describe the path a printed series takes (where it peaked, turned or kept moving). You may not produce a figure the outputs do not print: no sums, averages, differences, ratios, shares or rankings of your own. The pipeline's definitions are in [references/output-schema.md](references/output-schema.md).
 
 ## Step 4: Write the analysis
 
-Write roughly 350–600 words in Markdown, using these sections:
+Write roughly 350–600 words in Markdown, in three clearly separated parts plus Data notes. Leave out any finding whose data the brief does not have (Step 3), and say so in the Data notes.
 
-1. **Headline**: two or three sentences on the month: revenue, gross margin, core operating result and cash, each with its direction and size.
-2. **Revenue**: the month-over-month (MoM) and year-over-year (YoY) change, and which streams drove it. Use the stream table and highlights. Give the TTM revenue and stream mix.
-3. **Margins**: the gross margin and core operating margin (MoM in percentage points, YoY, TTM). Say which cost lines moved the gross margin.
-4. **Operating expenses**: the categories that moved materially. Mention an account only when it explains a category's move or is flagged "Unusual".
-5. **Trailing twelve months**: the TTM revenue, gross profit, core operating income and margins, and how this month compares with the TTM run-rate where the brief supports it.
-6. **Cash and balance sheet** (if there is a balance sheet): the change in cash, working capital and liabilities, from the balance-sheet section only.
-7. **For the reviewer to confirm**: one question per material movement whose cause the data cannot show.
-8. **Data notes**: the validation status, the key assumptions (especially which accounts the "core" figures exclude) and the limitations. Keep this short.
+**Part A: Verified findings.** Facts only, each with its figure from the outputs.
+
+1. **Headline**: two or three sentences on the month: revenue, gross margin, the operating result (core where it exists) and, where there is a balance sheet, cash. Give each one's direction and size.
+2. **Revenue**: the MoM change and, where available, the YoY change. Name the streams whose changes account for it, with their figures. Give the TTM revenue and stream mix where available.
+3. **Margins**: the gross margin and the operating margin (core where it exists): MoM in percentage points, and YoY and TTM where available. Name the cost lines whose changes account for the gross-margin move.
+4. **Operating expenses**: the categories that moved materially. Mention an account only when its figure accounts for a category's move or it is flagged "Unusual".
+5. **Trailing twelve months**: TTM revenue, gross profit, operating result and margins, and how this month compares with the TTM figures where the brief supports it.
+6. **Cash and balance sheet**: the change in cash, working capital and liabilities, from the balance-sheet section only.
+
+**Part B: Questions for the owner.** One question per material movement whose cause the data cannot show. A question names the movement, its figure and its month, and asks what caused it, whether it was expected or whether it will recur. It must not suggest an event, counterparty, price, volume or headcount that the outputs do not contain.
+
+**Part C: Unconfirmed hypotheses.** Each is one sentence starting "Possible explanation (unconfirmed):", attached to one Part A finding. Its only permitted basis is what the outputs show (an account name, the timing of a movement, or the same pattern in earlier months under "Unusual months across the full history"), and the sentence states that basis. If the data gives no basis, write "None: the data does not suggest one."
+
+**Data notes.** The validation status and any warnings; the key assumptions (especially which accounts the core figures exclude, if any); the limitations; and, for the reviewer, every account or config issue from Step 2. Keep this short.
 
 ### Rules
 
-- **Facts and explanations are separate.** State what moved as fact, with figures. Any possible reason must be labelled and framed as something to confirm, for example: "Possible explanation (unconfirmed): …" or "Was this a one-off …?". The only basis for a possible explanation is what the data shows: account names, timing, or a repeat of the same pattern in earlier months (see "Unusual months across the full history"). Never present a cause as fact, and never invent events, customers, contracts or people.
-- **Cover the highlights.** Every headline-metric and margin highlight must be addressed. Line-item highlights may be grouped. If you leave one out, it should be because a larger highlight already explains it.
-- **Core vs as presented.** When the config classifies accounts, lead with the core figures and say once what they exclude. Net income includes those items. For example, Dec 2025 at ABC Inc has a large income-tax benefit inside operating expenses, so mention it whenever net income is compared across that month.
-- **"As presented" follows the workbook.** Whenever you give an operating figure as presented (operating expenses, operating income or operating margin), say that it follows the workbook's own layout and includes the accounts listed in the brief's "As presented" note (for ABC Inc: interest and the income-tax benefit). Do not call such a figure simply "operating" without that qualifier.
-- **Classifications are the config's, not yours.** Describe accounts using the classification the brief and `analysis.json` report, and say it is a configured judgment awaiting accounting-team confirmation where it matters. Never reclassify an account, move it between "core" and "as presented", or rename a category in the commentary. If a classification looks wrong, raise it under "For the reviewer to confirm".
+- **Facts and explanations are separate.** Part A states what moved. A cause appears only as a Part C hypothesis or a Part B question. The one exception is arithmetic: a line item whose quoted figure accounts for a movement ("<category> fell <amount>, driven by <account>, down <its change>"). Never invent causes, forecasts, events, customers, contracts, people or account classifications.
+- **Cover the highlights.** Every headline-metric and margin highlight must be addressed. Line-item highlights may be grouped. If you leave one out, it should be because a larger highlight already accounts for it.
+- **Core vs as presented.** When the brief has core figures, lead with them and say once what they exclude. Net income and every as-presented figure include those accounts. When one of them appears under "Unusual months across the full history", mention it whenever net income or an as-presented figure is compared across that month.
+- **"As presented" follows the workbook.** When the brief has an "As presented" note, every operating figure you give as presented (operating expenses, operating income or operating margin) must say that it follows the workbook's own layout and includes the accounts that note lists. Do not call such a figure simply "operating" without that qualifier.
+- **Classifications are the config's, not yours.** Describe accounts using the classification and category the brief reports, and say it is a configured judgment awaiting accounting-team confirmation where it matters. Never reclassify an account, move it between core and as presented, or rename a category. If one looks wrong, raise it in the Data notes for the reviewer.
 - **Monthly vs TTM.** Label every figure as a single month or as TTM (twelve months to a month-end), and never let one stand for the other. "Improved each month" about a TTM series describes the rolling total, not the months themselves.
-- **Core operating margin, both views.** Give the monthly core operating margin trend (from the "Monthly trend" table) and the TTM core operating margin trend (from the "TTM trend" table) as separate statements. If they move in different directions, say so.
-- **Describe a TTM series by its path, not just its ends.** Check the "TTM trend" table before writing "rose" or "fell" between two dates. If the series peaked or bottomed in between, say where and what happened after. For example, at ABC Inc for June 2026 the table shows TTM gross profit increasing overall from Dec 2025, peaking in May 2026 and declining in June 2026. Write it that way only when the saved table shows it.
-- **No unsupported causes.** A cause may appear only as a labelled, unconfirmed possibility under the first rule. Do not explain a movement with anything the saved outputs do not show.
-- **Percentages.** Changes in margins are in percentage points, not %. A `*` means the % was calculated against a negative base. For losses, prefer the absolute change ("the loss narrowed by 8,344"). Where the brief shows `n/a (reason)`, give the reason (for example, "up from zero") and never put a % there.
+- **Operating margin, both views.** Where both exist, give the monthly operating-margin trend (from "Monthly trend") and the TTM trend (from "TTM trend") as separate statements. If they move in different directions, say so.
+- **Describe a TTM series by its path, not just its ends.** Check the "TTM trend" section before writing "rose" or "fell" between two dates. If the series peaked or bottomed in between, say where and what followed: "TTM <metric> rose overall from <first month> to <analysis month>, peaking in <month> and falling in <month>". Write it that way only when the saved table shows it.
+- **Percentages.** Changes in margins are in percentage points, not %. A `*` means the % was calculated against a negative base. For losses, prefer the absolute change ("the loss narrowed by <amount>"). Where the brief shows `n/a (reason)`, give the reason and never a %.
 - **Balance sheet.** These are month-end balances. Never add them up across months or describe them as TTM.
-- **Rounding.** Use the figures exactly as the brief rounds them: whole currency units, and percentages to one decimal place.
-- **Missing data.** Months listed under missing periods or missing values have no comparisons. Say that, and don't fill the gap.
-- **Highlights are not exhaustive.** They come from fixed materiality rules, listed under Assumptions. Do not describe a sub-threshold movement as significant.
+- **Rounding and currency.** Use the figures exactly as the brief rounds them, in the currency the brief states.
+- **Highlights are not exhaustive.** They come from the materiality rules listed under Assumptions. Do not describe a sub-threshold movement as significant.
 
 ### Before you return the analysis, check:
 
 - [ ] Every number appears in `brief.md` or `analysis.json`, at the same rounding.
-- [ ] No sentence states a cause as fact.
+- [ ] Part A states no cause other than an arithmetic attribution; every hypothesis is in Part C, labelled, one sentence, with its data basis.
+- [ ] No question or hypothesis names an event, counterparty, price, volume or headcount the outputs do not contain.
 - [ ] Every headline-metric and margin highlight is covered.
-- [ ] Any warnings or errors are visible at the top, and every account under "Accounts needing classification" is raised for the reviewer.
-- [ ] The core-vs-presented distinction and the limitations are stated, and every "as presented" operating figure says it follows the workbook and includes the configured items.
-- [ ] Every figure is labelled monthly or TTM; the monthly and TTM core operating margin trends are given separately; no TTM series is described by its ends alone when it peaked or bottomed in between.
+- [ ] Warnings and errors are visible at the top, and every account or config issue from Step 2 is in the Data notes.
+- [ ] Missing months, `n/a` comparisons and unavailable TTM or balance-sheet figures are stated, not filled.
+- [ ] Where core figures exist, the core-vs-presented distinction is stated, and every as-presented operating figure says it follows the workbook and includes the configured accounts.
+- [ ] Every figure is labelled monthly or TTM; no TTM series is described by its ends alone when it peaked or bottomed in between.
 - [ ] No account classification or category was changed or reinterpreted.
 - [ ] The last line is the source line copied from the top of `brief.md`.
 
@@ -126,18 +153,25 @@ It records which analysis the commentary was written from, so a later reader can
 python "${CLAUDE_SKILL_DIR}/scripts/check_commentary.py" "out/<workbook name>/<YYYY-MM>"
 ```
 
-Exit `0` means the source line matches the saved analysis and every number was found in the saved outputs. Exit `4` means the source line is missing, duplicated or names a different period, workbook or analysis: copy it again from the current `brief.md` (if the analysis changed, rewrite the commentary from the new brief). Exit `4` also means the folder is not one current analysis: the latest run failed, or `brief.md`, `analysis.json` and `last_run.json` describe different runs. Then re-run the pipeline; never edit `last_run.json` or the source line to make the check pass. Exit `3` lists each untraced number: replace it with a figure from the outputs, or say the figure was not calculated, and run the check again. Do not return the analysis until the check passes. The check proves a number came from the outputs, not that it is quoted with the right sign, month or label, so keep the rules above. Then show the analysis in the reply.
+Exit `0` means the source line matches the saved analysis and every number was found in the saved outputs. Exit `4` means the source line is missing, duplicated or names a different period, workbook or analysis: copy it again from the current `brief.md` (if the analysis changed, rewrite the commentary from the new brief). Exit `4` also means the folder is not one current analysis: the latest run failed, or `brief.md`, `analysis.json` and `last_run.json` describe different runs. Then re-run the pipeline; never edit `last_run.json` or the source line to make the check pass. Exit `3` lists content findings, one per line, with the sentence. Fix each one and run the check again:
+
+- `MISATTRIBUTED`: the number is not a figure of what the sentence names, for the month it names or the analysis month. Quote the right figure from the brief, and name the month whenever the figure is not the analysis month's.
+- `CONTRADICTS`: the figure is right, but its sign, direction word ("rose", "fell", "narrowed"...) or "profit"/"loss" says the opposite of the analysis. Correct the wording.
+- `FORECAST`: a number in a forward-looking sentence. Remove it; the analysis makes no forecasts.
+- `UNSUPPORTED_CAUSE`: a cause stated as fact. Either quote the line item and its figure that account for the movement, or move it to Part C as "Possible explanation (unconfirmed): ..." or to Part B as a question.
+- `UNTRACED`: a number in a sentence that names no metric, account or category and is not printed in `brief.md`. Replace it with a figure from the brief, or say it was not calculated.
+
+Do not return the analysis until the check passes. The check reads a fixed vocabulary, so a wrong claim without a number, or one whose sentence names nothing it recognises, can still pass; it also does not tell % from pp, so write margin changes in pp yourself. Keep the rules above. Then show the analysis in the reply.
 
 ## Using the skill for another company
 
-The pipeline locates sections, subtotals and months by structure and by configurable labels. It contains no account names, so a new company needs a config file, not a code change:
+The pipeline locates sections, subtotals and months by structure and by configurable labels. It contains no account names, so a new company needs a config file, not a code change and not a change to these instructions:
 
 1. Run the pipeline with `--no-config`. Check the Validation section for `unmapped_accounts`, `group_without_total`, `unmatched_total`, `ignored_column` and failed subtotal checks.
 2. Create `config/companies/<company>.json` with `company_name` set to the company as named in the workbook's title (ask the user if unsure; never invent it), plus only the keys you need to override: sheet or section aliases, account classes, expense-category rollups and thresholds. See [references/company-config.md](references/company-config.md).
 3. Re-run until validation passes and every expense account sits in a sensible category. The accounting team must sign off the classifications and categories.
 
 ## Maintenance
-
 - Code: `src/financial_analysis/`, split into `loader` → `calculations` → `trends` / `validation` / `highlights` → `pipeline` → `output`.
-- Tests: `.venv/Scripts/python.exe -m pytest`.
+- Tests: `python -m pytest` with the repository's `.venv` active. `tests/test_skill_reusability.py` fails if these instructions name a configured company, one of its accounts or categories, a specific month or a specific amount; keep examples as `<placeholders>`.
 - When you change a calculation or a highlight rule, update [references/output-schema.md](references/output-schema.md) and the tests together.

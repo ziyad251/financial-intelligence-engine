@@ -159,6 +159,8 @@ class _SheetParser:
         self.evaluator = FormulaEvaluator(lambda col, row: self.wf.cell(row, col).value)
         derived = config.income_statement["derived_rows"] if statement_key == "income_statement" else {}
         self.derived_aliases = [alias for names in derived.values() for alias in names]
+        known = config.income_statement["sections"] if statement_key == "income_statement" else config.balance_sheet["groups"]
+        self.known_group_aliases = [alias for names in known.values() for alias in names]
         self.evaluated: dict[int, list[tuple[Period, str]]] = {}  # sheet row -> [(period, cell)] recalculated
 
     def issue(self, code: str, severity: str, message: str, **kw) -> None:
@@ -237,13 +239,16 @@ class _SheetParser:
                        f"Group '{group.label}' (row {group.header_row}) has no 'Total {group.label}' row ({reason}); "
                        "its accounts are still used but it cannot be reconciled", account=group.label)
 
+        labels: dict[int, tuple[str, int]] = {}  # sheet row -> (label, indent), labelled rows only
         for r in range(header_row + 1, ws.max_row + 1):
-            label, indent = None, 0
             for c in label_cols:
                 v = ws.cell(r, c).value
                 if isinstance(v, str) and v.strip():
-                    label, indent = v.strip(), c - label_cols.start
+                    labels[r] = (v.strip(), c - label_cols.start)
                     break
+
+        for r in range(header_row + 1, ws.max_row + 1):
+            label, indent = labels.get(r, (None, 0))
             raw_present = any(not _blank(ws.cell(r, c).value) for c in columns.values())
             if label is None:
                 if raw_present:
@@ -251,6 +256,14 @@ class _SheetParser:
                 continue
 
             if not raw_present:
+                if stack and not self._opens_group(r, label, indent, labels):
+                    self.issue("empty_account_row", WARNING,
+                               f"Row {r} '{label}' has no values in any month and is not a group heading (no "
+                               f"'Total {label}' row closes it, it is not a configured section, and the rows below it "
+                               f"are not indented under it). It is treated as an account with no values, so the "
+                               f"accounts below it stay in '{stack[-1].label}'", account=label,
+                               details={"row": r, "group": " > ".join(g.label for g in stack)})
+                    continue
                 group = Group(label, indent, tuple(g.label for g in stack), r)
                 (stack[-1].children if stack else top).append(group)
                 stack.append(group)
@@ -310,6 +323,20 @@ class _SheetParser:
                        f"{gap.label} is missing between the first and last months; comparisons that need it are not calculated",
                        period=gap.key)
         return Statement(self.sheet, title_lines, periods, rows, top, orphans)
+
+    def _opens_group(self, r: int, label: str, indent: int, labels: dict[int, tuple[str, int]]) -> bool:
+        """Whether a value-less row inside an open group is a sub-group heading rather than an account that
+        happens to be blank in every month. Making it a heading moves every account below it into a new group
+        (and so a new category), so that needs evidence: a later 'Total <label>' row that closes it, a label the
+        config names as a section or group, or a next labelled row indented further than it. Top-level value-less
+        rows are always section headings and do not come here."""
+        target = "total " + normalize_label(label)
+        if any(row > r and normalize_label(text) == target for row, (text, _) in labels.items()):
+            return True
+        if label_in(label, self.known_group_aliases):
+            return True
+        following = [row for row in labels if row > r]
+        return bool(following) and labels[min(following)][1] > indent
 
     def _report_recalculated(self, rows: list[Row]) -> None:
         """One info issue per row whose formula cells had no value cached by Excel (the file was written by a

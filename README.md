@@ -5,9 +5,9 @@ This is a build exercise for RE Financial Services: connect QuickBooks Online to
 | Part | Deliverable | Status |
 |---|---|---|
 | 1. QuickBooks ↔ Claude | Read-only MCP connection to a sandbox company | Working. [Integration README](integrations/quickbooks/README.md), [decision record](docs/integration-decision.md) |
-| 2. Trend-analysis skill | [`.claude/skills/monthly-trend-analysis`](.claude/skills/monthly-trend-analysis/SKILL.md) and its Python pipeline | Working on the supplied workbook; 163 tests (148 run without the workbook, see Quick start) |
-| 3. Eval suite (5+ golden cases) | [`evals/golden_cases`](evals/golden_cases/README.md) | **Working.** 9 golden cases (258 checks) on synthetic workbooks, graded against hand-calculated expectations; `python evals/golden_cases/run_golden.py` exits 1 on any regression; also run by pytest. Commentary quality is a manual rubric, not automated |
-| 4. One-page architecture note | `docs/architecture.md` | **Not written** |
+| 2. Trend-analysis skill | [`.claude/skills/monthly-trend-analysis`](.claude/skills/monthly-trend-analysis/SKILL.md) and its Python pipeline | Working on the supplied workbook; covered by the pytest suite (tests that need the workbook skip without it, see Quick start) |
+| 3. Eval suite (5+ golden cases) | [`evals/golden_cases`](evals/golden_cases/README.md) | **Working.** 10 golden cases (281 checks) on synthetic workbooks, graded against hand-calculated expectations; `python evals/golden_cases/run_golden.py` exits 1 on any regression; also run by pytest. Commentary is checked automatically for misattributed and contradicted figures, forecasts and unsupported causes (`tests/test_commentary_claims.py`); its overall quality is a manual rubric |
+| 4. One-page architecture note | [`docs/architecture.md`](docs/architecture.md) | Written. Separates what is built from what is proposed; multi-client isolation is a proposal and is **not** enforced by the current code |
 
 ## Layout
 
@@ -17,7 +17,7 @@ This is a build exercise for RE Financial Services: connect QuickBooks Online to
 .claude/skills/monthly-trend-analysis/  The Claude Skill: SKILL.md, runner script, references
 config/companies/                 Per-company settings: account classes, expense categories
 data/                             Source workbook (read-only input; gitignored, so place it here locally)
-docs/                             Integration decision, security (assignment brief PDF kept locally, not committed)
+docs/                             Architecture note, integration decision, security (assignment brief PDF kept locally, not committed)
 integrations/quickbooks/          Hardened MCP launcher + tests, dependency patch, setup, OAuth, troubleshooting
 src/financial_analysis/           Deterministic pipeline: load → calculate → validate → highlight → output
 tests/                            pytest suite (small hand-built workbooks + the ABC workbook)
@@ -30,10 +30,13 @@ out/                              Analysis outputs (gitignored; contains client 
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -e .[dev]
-.venv\Scripts\python -m pytest
+.venv\Scripts\python -m pytest                          # full Python suite, including one test per golden case
+.venv\Scripts\python evals/golden_cases/run_golden.py   # golden evaluation report; exit 1 on any regression
 ```
 
-With the supplied workbook in `data/`, the suite runs 163 tests and all pass (10 of them are the golden evaluation suite, see [evals/golden_cases](evals/golden_cases/README.md)). Without it, as in a fresh clone, 148 pass and 15 are **skipped**: the 12 tests in `tests/test_abc_workbook.py` check the pipeline against the totals Excel cached in that workbook, 2 in `tests/test_provenance_safeguards.py` read the supplied workbook and its saved commentary, and 1 in `tests/test_data_reliability.py` checks that it uses Excel's cached values. The workbook is client data and is never committed, so those tests skip themselves when it is absent. Every other test builds small synthetic workbooks in a temporary directory.
+The QuickBooks launcher has its own offline tests (Node.js 20+, no network, fake credentials): `cd integrations/quickbooks; npm test`. Connecting to a sandbox is described in [integrations/quickbooks/README.md](integrations/quickbooks/README.md).
+
+Place the supplied workbook in `data/` to run every test. It is client data and is never committed, so in a fresh clone the tests that read it skip themselves: `tests/test_abc_workbook.py` (the pipeline against the totals Excel cached in the workbook) and one or two tests each in `tests/test_provenance_safeguards.py`, `tests/test_data_reliability.py` and `tests/test_commentary_claims.py`. Every other test builds small synthetic workbooks in a temporary directory.
 
 ### Run the analysis directly
 
@@ -77,7 +80,7 @@ All of the arithmetic is done in Python; Claude only interprets the results.
 - **Metrics.** Revenue (by stream), cost of goods sold, gross profit and margin, operating expenses (as presented, by category, and "core" excluding configured non-operating accounts), operating and net income. Each comes with MoM, YoY, TTM and YTD views. Balance-sheet figures are month-end balances and are never summed into TTM.
 - **New companies.** Another company needs a JSON file in `config/companies/`, not a code change. See [company-config.md](.claude/skills/monthly-trend-analysis/references/company-config.md).
 - **Output format.** See [output-schema.md](.claude/skills/monthly-trend-analysis/references/output-schema.md).
-- **Commentary provenance.** Each commentary ends with the source line from `brief.md` (analysis period, workbook SHA-256, `analysis_id`). `python -m financial_analysis.trace <out folder>` checks that line against the saved `analysis.json` and that every number in the commentary appears in the saved outputs. It also rejects (exit 4) a folder whose latest run failed, or whose `brief.md`, `analysis.json` and `last_run.json` describe different runs. `last_run.json` alone never makes a commentary pass.
+- **Commentary provenance.** Each commentary ends with the source line from `brief.md` (analysis period, workbook SHA-256, `analysis_id`). `python -m financial_analysis.trace <out folder>` checks that line against the saved `analysis.json`, then checks the content (`claims.py`). A number in a sentence that names a metric, account, category or balance-sheet figure must be one of that item's figures, for a month the sentence names or the analysis month. Its sign, direction words and "profit"/"loss" must agree with the analysis. Forecast numbers, and causes stated as fact without a figure from the analysis, are rejected; a labelled hypothesis or a question is not. A number in a sentence that names nothing must be printed in `brief.md`. This is a guard, not a proof; see the limitations in `claims.py`. It also rejects (exit 4) a folder whose latest run failed, or whose `brief.md`, `analysis.json` and `last_run.json` describe different runs. `last_run.json` alone never makes a commentary pass.
 
 ### Accounting decisions awaiting confirmation (ABC Inc)
 
@@ -101,7 +104,7 @@ Claude Code starts Intuit's open-source MCP server (`vendor/quickbooks-online-mc
 
 Setup, OAuth, token rotation, reconnection and team hosting are covered in [integrations/quickbooks/README.md](integrations/quickbooks/README.md) and [docs/integration-decision.md](docs/integration-decision.md). Credential and data rules are in [docs/security.md](docs/security.md).
 
-The pipeline currently reads the Excel workbook only. Running the same skill against data from QuickBooks (the assignment's stretch goal) is not implemented.
+The pipeline currently reads the Excel workbook only. The assignment's stretch goal (loading the workbook into the sandbox and running the same skill against QuickBooks data) is not implemented: no workbook data has been written to QuickBooks, and the skill does not query QuickBooks.
 
 ## Skill location
 

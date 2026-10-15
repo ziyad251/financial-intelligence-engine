@@ -28,7 +28,7 @@ The pipeline needs no account names, only the layout:
 | `income_statement.account_classes.non_operating` / `income_tax` | `[]` | Operating-expense accounts excluded from the **core** figures |
 | `income_statement.account_classes.non_cash` | `[]` | A memo total only. These accounts are not excluded from core figures |
 | `income_statement.expected_negative_accounts` | `[]` | Accounts whose negative values should not be flagged (for example, interest income booked as a contra-expense) |
-| `income_statement.opex_rollups` | `[]` | An ordered list of `{"name", "match": [regex]}`. Each regex is matched against the account path, such as `Operating Expenses > S & M Payroll > Sales - Payroll`, and the first match wins. Unmatched accounts go to "Other operating expenses". Each one is an `uncategorised_opex` **warning** naming the account, its row and its values, and is listed in the brief's "Accounts needing classification" section. It is counted in core operating expenses until it is classified, and is never classified automatically. When the list is empty, each direct child of the opex section is its own category |
+| `income_statement.opex_rollups` | `[]` | An ordered list of `{"name", "match": [regex]}`. Each regex is matched against the account path, such as `Operating Expenses > Payroll > Sales Salaries`, and the first match wins. Unmatched accounts go to "Other operating expenses". Each one is an `uncategorised_opex` **warning** naming the account, its row and its values, and is listed in the brief's "Accounts needing classification" section. It is counted in core operating expenses until it is classified, and is never classified automatically. When the list is empty, each direct child of the opex section is its own category |
 | `balance_sheet.groups.<assets\|liabilities\|equity\|current_assets\|current_liabilities\|cash>` | common labels | Group labels used for the balance-sheet metrics |
 | `balance_sheet.current_year_earnings_accounts` | Current Year Earnings, Net Income | The account used for the earnings roll-forward check |
 | `thresholds.*` | see config.py | Materiality rules for highlights. See output-schema.md |
@@ -46,4 +46,4 @@ The config is validated before any analysis runs. Unknown keys (at any level, so
 5. Set `company_name` to the company named in the workbook's title (confirm it with the user).
 6. Re-run until the status is `pass` and every subtotal check passes. Get the classifications and categories signed off.
 
-Example: `config/companies/abc-inc.json`.
+Examples: the existing files in `config/companies/`. Copy the structure, never the classifications: each company's accounts must be classified by its own accounting team.

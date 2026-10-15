@@ -12,7 +12,7 @@ from financial_analysis.loader import DERIVED, LEAF, SUBTOTAL, load_workbook
 from financial_analysis.periods import Period, parse_period
 from financial_analysis.pipeline import analyze
 
-from helpers import make_workbook, months_from
+from helpers import make_workbook, months_from, write_sheet
 
 SIMPLE = [
     (0, "Income", None),
@@ -83,6 +83,69 @@ def test_unmapped_section_is_flagged(tmp_path):
     r = analyze(make_workbook(tmp_path / "u.xlsx", ["Jan 2026", "Feb 2026", "Mar 2026"], rows))
     issue = next(i for i in r["validation"]["issues"] if i["code"] == "unmapped_accounts")
     assert issue["details"]["accounts"] == ["Mystery Items > Widget"]
+
+
+def test_unrecognised_section_with_amounts_fails_closed(tmp_path):
+    # 'Overheads' matches no section alias. Its amounts used to drop out of operating and net income while the
+    # run passed with a warning, overstating profit. Now the run fails and names the account and its amounts.
+    rows = SIMPLE[:6] + [(0, "Overheads", None), (1, "Consulting", [0, 30, 40]), (1, "Postage", [0, 0, 0]),
+                         (0, "Total Overheads", "=SUM({c}14:{c}15)")]
+    r = analyze(make_workbook(tmp_path / "o.xlsx", ["Jan 2026", "Feb 2026", "Mar 2026"], rows))
+    assert r["status"] == "fail"
+    issue = next(i for i in r["validation"]["issues"] if i["code"] == "unmapped_accounts")
+    assert issue["severity"] == "error"
+    assert issue["details"]["accounts"] == ["Overheads > Consulting", "Overheads > Postage"]
+    assert issue["details"]["accounts_with_amounts"] == [
+        {"account": "Overheads > Consulting", "source_row": 14, "values": {"2026-02": 30.0, "2026-03": 40.0}}]
+    assert "Overheads > Consulting (row 14)" in issue["message"] and "income_statement.sections" in issue["message"]
+
+
+def test_unrecognised_section_without_amounts_stays_a_warning(tmp_path):
+    rows = SIMPLE[:6] + [(0, "Overheads", None), (1, "Postage", [0, 0, 0]), (0, "Total Overheads", "=SUM({c}14:{c}14)")]
+    r = analyze(make_workbook(tmp_path / "z.xlsx", ["Jan 2026", "Feb 2026", "Mar 2026"], rows))
+    issue = next(i for i in r["validation"]["issues"] if i["code"] == "unmapped_accounts")
+    assert issue["severity"] == "warning" and issue["details"]["accounts_with_amounts"] == []
+    assert r["status"] == "pass_with_warnings"
+
+
+BLANK_ROW_OPEX = [
+    (0, "Income", None),
+    (1, "Sales", [1000, 1000, 1000]),
+    (0, "Total Income", "=SUM({c}8:{c}8)"),
+    (0, "Operating Expenses", None),          # 10
+    (1, "Rent", [100, 100, 100]),             # 11
+    (1, "New Unused Account", None),          # 12: blank in every month, same indent as the accounts around it
+    (1, "Salaries", [500, 500, 500]),         # 13
+    (1, "Software", [50, 50, 50]),            # 14
+    (0, "Total Operating Expenses", "=SUM({c}11:{c}14)"),
+]
+
+
+def test_blank_account_row_does_not_regroup_the_accounts_below_it(tmp_path):
+    # Before the fix the blank row opened a group, so Salaries and Software were reported under a
+    # 'New Unused Account' category (550). Each account must stay its own category, as without the row.
+    r = analyze(make_workbook(tmp_path / "b.xlsx", ["Jan 2026", "Feb 2026", "Mar 2026"], BLANK_ROW_OPEX))
+    cats = {c["name"]: c["values"]["2026-03"] for c in r["income_statement"]["opex_categories"]}
+    assert cats == {"Rent": 100.0, "Salaries": 500.0, "Software": 50.0}
+    paths = {a["label"]: a["path"] for a in r["income_statement"]["accounts"] if a["section"] == "opex"}
+    assert paths["Salaries"] == "Operating Expenses > Salaries"
+    issue = next(i for i in r["validation"]["issues"] if i["code"] == "empty_account_row")
+    assert issue["severity"] == "warning" and issue["details"] == {"row": 12, "group": "Operating Expenses"}
+    assert not any(i["code"] == "group_without_total" for i in r["validation"]["issues"])
+    assert r["income_statement"]["monthly"]["opex_total"]["values"]["2026-03"] == 650.0
+
+
+def test_valueless_row_with_indented_accounts_below_is_still_a_sub_group(tmp_path):
+    rows = BLANK_ROW_OPEX[:5] + [(1, "Payroll", None), (2, "Salaries", [500, 500, 500]), (2, "Bonus", [50, 50, 50]),
+                                 (0, "Total Operating Expenses", "=SUM({c}11:{c}14)")]
+    wb = openpyxl.Workbook()
+    wb.active.title = "Income Statement"
+    write_sheet(wb.active, ["Jan 2026", "Feb 2026", "Mar 2026"], rows, label_cols=3)  # indent 2 needs a third label column
+    wb.save(tmp_path / "g.xlsx")
+    r = analyze(tmp_path / "g.xlsx")
+    cats = {c["name"]: c["values"]["2026-03"] for c in r["income_statement"]["opex_categories"]}
+    assert cats == {"Rent": 100.0, "Payroll": 550.0}
+    assert not any(i["code"] == "empty_account_row" for i in r["validation"]["issues"])
 
 
 def test_formula_without_cache_is_evaluated(tmp_path):

@@ -7,13 +7,14 @@ The result is deterministic for a given workbook, config and period: no timestam
 | Field | Meaning |
 |---|---|
 | `schema_version`, `engine_version` | Bump `SCHEMA_VERSION` in `src/financial_analysis/__init__.py` when fields change meaning |
-| `source` | The workbook file name, its `sha256` and the sheets used. The hash shows which data state produced the result |
+| `company_name`, `currency` | From the config (`currency` is display only) |
+| `source` | The workbook file name, its `sha256`, the sheets used and `title_lines` (the sheet's title rows, which the company check reads). The hash shows which data state produced the result |
 | `config` | The config file name, whether classification and rollups are configured, the thresholds and the fiscal-year start |
 | `status` | `pass` / `pass_with_warnings` / `fail`, the worst issue severity. `fail` means no commentary is written |
 | `periods` | `available`, `analysis_period`, `prior_period`, `same_period_last_year` (null if absent), `missing_periods` and `materiality_threshold` |
 | `income_statement` | Full monthly data. See below |
 | `analysis_period` | Rows ready for commentary on the analysis month. See below |
-| `balance_sheet` | Point-in-time balances, or null when there is no balance sheet |
+| `balance_sheet` | Point-in-time balances, or null when there is no balance sheet. `groups_found` names the workbook group matched for each configured balance-sheet group (null if none) |
 | `highlights`, `highlights_dropped` | Rule-based P&L movements for the analysis month, ranked, plus the number cut off by `max_highlights` |
 | `history_outliers` | The largest unusual account values across every month (one-offs and recurring peaks) |
 | `validation` | `status`, `counts` by severity, `checks` and `issues` |
@@ -22,6 +23,7 @@ The result is deterministic for a given workbook, config and period: no timestam
 ## income_statement
 
 - `sections`: maps each section key (`revenue`, `cogs`, `opex`, `other_income`, `other_expense`) to the label of the group it was found under, or null.
+- `headline_metrics`: the metrics the headline highlights use: the core figures when account classes are configured, the as-presented figures otherwise.
 - `monthly.<metric>`: `{label, unit: amount|percent, basis: "calculated", values: {month: number|null}, notes: {month: reason}}`.
 - `ttm.<metric>`: `{values, notes}`. Amounts are 12-month sums. Ratios are the TTM numerator divided by TTM revenue.
 - `revenue_history`: revenue across the whole workbook, independent of the analysis month.
@@ -103,7 +105,10 @@ Each entry in `checks[]` is `{check, status: pass|fail|skipped|flagged, descript
 - `negative_values`: revenue or expense accounts with negative postings that are not configured as expected (info).
 - `missing_values`, `period_continuity`: blank account cells and gaps between months.
 
-Each entry in `issues[]` is `{code, severity, message, sheet?, account?, period?, details?}`. The codes raised by the loader are `missing_value`, `non_numeric_value`, `formula_error`, `formula_unevaluated`, `formula_evaluated`, `missing_period`, `duplicate_period`, `ignored_column`, `unlabelled_row`, `orphan_row`, `group_without_total`, `unmatched_total` and `formula_row_excluded`. `empty_opex_category` (warning) means a configured expense category matched no account and is reported as 0.
+Each entry in `issues[]` is `{code, severity, message, sheet?, account?, period?, details?}`. The codes raised by the loader are `missing_value`, `non_numeric_value`, `formula_error`, `formula_unevaluated`, `formula_evaluated`, `missing_period`, `duplicate_period`, `ignored_column`, `unlabelled_row`, `orphan_row`, `group_without_total`, `unmatched_total`, `empty_account_row` and `formula_row_excluded`. `empty_opex_category` (warning) means a configured expense category matched no account and is reported as 0.
+
+- `empty_account_row` (warning): a value-less row inside a group that is not a sub-group heading (no `Total <label>` row closes it, it is not a configured section or group, and the next row is not indented under it). It is treated as an account with no values, so the accounts below it keep their group and category. `details: {row, group}`.
+- `unmapped_accounts`: accounts outside every recognised section, which no metric includes. `details: {accounts, accounts_with_amounts}`, where `accounts_with_amounts` lists `{account, source_row, values}` for each account with a non-zero value (`values` holds those months). It is an **error** when `accounts_with_amounts` is not empty, because revenue, costs or profit would otherwise be misstated; map the section in `income_statement.sections` or correct the workbook. It is a warning when every such account is blank or zero.
 
 - `formula_evaluated` (info) is raised once per row whose formula cells had no value cached by Excel, with `details: {row, row_kind, cells, periods}`. `row_kind` is `leaf` when the recalculated values feed the figures, otherwise the row is a workbook total used only for reconciliation.
 - `uncategorised_opex` (warning) is raised once per operating-expense account that matches no `opex_rollups` rule, with `details: {path, source_row, category: "Other operating expenses", classification: null, values}` (`values` holds the months with a non-zero value). It is not raised when no rules are configured.
